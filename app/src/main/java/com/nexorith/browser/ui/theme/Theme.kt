@@ -10,16 +10,24 @@ private val NexorithColorScheme = darkColorScheme(
     tertiary = NexorithAccentBlue,
     background = NexorithBackground,
     surface = NexorithSurface,
+    surfaceVariant = NexorithSurface,
     onPrimary = NexorithText,
     onSecondary = NexorithText,
     onTertiary = NexorithText,
     onBackground = NexorithText,
     onSurface = NexorithText,
     onSurfaceVariant = NexorithTextSecondary,
+    outline = NexorithTextSecondary,
+    error = NexorithError,
 )
 
 /** Nexorith is dark-only by design. */
 @Composable
 fun NexorithTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = NexorithColorScheme, content = content)
+    MaterialTheme(
+        colorScheme = NexorithColorScheme,
+        typography = NexorithTypography,
+        shapes = NexorithShapes,
+        content = content,
+    )
 }

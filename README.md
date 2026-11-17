@@ -10,18 +10,22 @@ Android browser by **NexorithLab** — *Browse Freely. Without Limits.*
 
 ## Status
 
-| Feature | Status |
-|---|---|
-| Project setup, MVVM structure, CI | IMPLEMENTED |
-| Branding and UI | NOT IMPLEMENTED |
-| WebView browsing | NOT IMPLEMENTED |
-| Multi-tab, bookmarks, history | NOT IMPLEMENTED |
-| AdBlock | NOT IMPLEMENTED |
-| Incognito | NOT IMPLEMENTED |
-| Download manager / accelerator | NOT IMPLEMENTED |
-| VPN (needs a real backend server) | NOT IMPLEMENTED |
+None of the code below has been compiled or run on a device yet; the first GitHub Actions run is the first real build. Statuses describe the code that was written, not verified behaviour.
 
-The CI pipeline has been written but not yet run on GitHub. See `docs/NexorithBrowser-Roadmap.md` for the 12-stage plan and `docs/ARCHITECTURE.md` for the code structure.
+| Feature | Status | Notes |
+|---|---|---|
+| Project setup, MVVM structure, CI | IMPLEMENTED | Stage 1 |
+| Branding, theme, Home, menu, ID/EN strings | IMPLEMENTED | Stage 2. Logo is a vector from `assets/nexorith-logo.svg` |
+| WebView browsing | IMPLEMENTED | Stage 3. HTTPS default, back/forward/reload/stop, error pages, SSL errors never bypassed, camera/mic/location prompts |
+| File upload chooser, fullscreen video, downloads | NOT IMPLEMENTED | Downloads come in stage 7 |
+| Multi-tab, bookmarks, history | IMPLEMENTED | Stage 4. SQLite storage. Open tabs are not restored after the app process is killed |
+| AdBlock | NOT IMPLEMENTED | Shown as "Upcoming" |
+| Incognito | NOT IMPLEMENTED | Shown as "Upcoming" |
+| Download manager / accelerator | NOT IMPLEMENTED | Shown as "Upcoming" |
+| VPN (needs a real backend server) | NOT IMPLEMENTED | Shown as "Upcoming" |
+| Settings screen | NOT IMPLEMENTED | |
+
+See `docs/NexorithBrowser-Roadmap.md` for the 12-stage plan and `docs/ARCHITECTURE.md` for the code structure.
 
 ## Build
 

@@ -11,10 +11,10 @@ UI (Compose screen) → ViewModel (StateFlow<UiState>) → Repository (interface
 | Package | Purpose | Stage |
 |---|---|---|
 | `di` | `AppContainer`, wiring of repositories | 1 |
-| `data` | Models and repositories shared across features | 1 |
-| `ui` / `ui.theme` / `ui.home` | Compose theme and screens | 1–2 |
-| `browser` | WebView host, navigation, errors, permissions | 3 |
-| `bookmarks`, `history` | Persistence and screens | 4 |
+| `data` | `AppInfo`, SQLite helper shared by bookmarks/history | 1, 4 |
+| `ui.*` | Compose theme, components, Home, browser, tabs, bookmarks, history screens | 2–4 |
+| `browser` | `BrowserViewModel` (tab state), `UrlResolver`, `WebViewRegistry` (one WebView per tab), site permission requests | 3–4 |
+| `bookmarks`, `history` | Repository interface + SQLite implementation | 4 |
 | `adblock` | Filter parser, rule matching, request interception | 5 |
 | `incognito` | Isolated profile and session cleanup | 6 |
 | `downloads` | Download manager and accelerator | 7–8 |
@@ -24,6 +24,14 @@ UI (Compose screen) → ViewModel (StateFlow<UiState>) → Repository (interface
 | `settings` | Preferences and screens | as needed |
 
 Empty packages contain only a `.gitkeep` until their stage starts.
+
+## Browser flow
+
+`BrowserViewModel` holds tab state (`TabState`) and never touches a WebView. The UI asks it to load a URL, which sets a one-shot `LoadRequest` on the tab. `BrowserScreen` performs the load on the tab's WebView (owned by `WebViewRegistry`) and tells the ViewModel the request was consumed. WebView callbacks flow back through `WebEvents` into the ViewModel. This keeps tab logic unit-testable without Android.
+
+Security defaults: HTTPS-first address resolution, `javascript:`/`file:`/`content:`/`data:` blocked, cleartext traffic disabled, mixed content blocked, file/content access off, SSL errors cancelled, third-party cookies off, WebView debugging only in debug builds.
+
+Known limits: tabs are not restored after process death; the activity handles configuration changes itself so WebViews survive rotation.
 
 ## Conventions
 

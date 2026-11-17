@@ -4,6 +4,16 @@
     <!-- Only what the current code needs. Further permissions are added with the feature that uses them. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Requested at runtime only when a website asks for them, after the user agrees. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+
     <application
         android:name=".NexorithApp"
         android:allowBackup="false"
@@ -17,6 +27,8 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode|density|layoutDirection|fontScale|locale"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Nexorith">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

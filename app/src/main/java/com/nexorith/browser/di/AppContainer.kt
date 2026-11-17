@@ -1,15 +1,23 @@
 package com.nexorith.browser.di
 
+import android.content.Context
 import com.nexorith.browser.BuildConfig
+import com.nexorith.browser.bookmarks.BookmarkRepository
+import com.nexorith.browser.bookmarks.SqliteBookmarkRepository
 import com.nexorith.browser.data.AppInfo
 import com.nexorith.browser.data.AppInfoRepository
 import com.nexorith.browser.data.BuildAppInfoRepository
+import com.nexorith.browser.data.NexorithDatabase
+import com.nexorith.browser.history.HistoryRepository
+import com.nexorith.browser.history.SqliteHistoryRepository
 
 /**
  * Manual dependency container. Repositories are registered here as features are added.
- * Kept dependency-free on purpose (no annotation processing) to keep CI builds simple and fast.
+ * Kept free of annotation processing on purpose to keep CI builds simple and fast.
  */
-class AppContainer {
+class AppContainer(context: Context) {
+
+    private val database = NexorithDatabase(context.applicationContext)
 
     val appInfoRepository: AppInfoRepository = BuildAppInfoRepository(
         AppInfo(
@@ -18,4 +26,7 @@ class AppContainer {
             versionName = BuildConfig.VERSION_NAME,
         ),
     )
+
+    val bookmarkRepository: BookmarkRepository = SqliteBookmarkRepository(database)
+    val historyRepository: HistoryRepository = SqliteHistoryRepository(database)
 }
