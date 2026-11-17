@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nexorith.browser.R
@@ -78,8 +79,9 @@ private fun SitePermissionDialog(request: SitePermissionRequest?, onHandled: () 
 
     if (request == null) return
 
+    val context = LocalContext.current
     val labels = request.features.joinToString(", ") { feature ->
-        stringResource(
+        context.getString(
             when (feature) {
                 SiteFeature.CAMERA -> R.string.perm_camera
                 SiteFeature.MICROPHONE -> R.string.perm_microphone
