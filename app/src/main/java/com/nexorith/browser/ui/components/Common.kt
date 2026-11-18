@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,4 +77,17 @@ fun EmptyState(text: String, modifier: Modifier = Modifier) {
             textAlign = TextAlign.Center,
         )
     }
+}
+
+/** Shown when the installed WebView cannot keep incognito data separate from the normal profile. */
+@Composable
+fun IncognitoUnsupportedDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.incognito_unsupported_title)) },
+        text = { Text(stringResource(R.string.incognito_unsupported_message)) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) }
+        },
+    )
 }

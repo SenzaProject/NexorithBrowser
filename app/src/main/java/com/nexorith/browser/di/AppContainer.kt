@@ -10,6 +10,8 @@ import com.nexorith.browser.data.BuildAppInfoRepository
 import com.nexorith.browser.data.NexorithDatabase
 import com.nexorith.browser.history.HistoryRepository
 import com.nexorith.browser.history.SqliteHistoryRepository
+import com.nexorith.browser.incognito.PrivateSession
+import com.nexorith.browser.incognito.WebKitPrivateProfiles
 
 /**
  * Manual dependency container. Repositories are registered here as features are added.
@@ -29,4 +31,7 @@ class AppContainer(context: Context) {
 
     val bookmarkRepository: BookmarkRepository = SqliteBookmarkRepository(database)
     val historyRepository: HistoryRepository = SqliteHistoryRepository(database)
+
+    /** Lifetime of private browsing data (separate WebView profile, deleted when private tabs close). */
+    val privateSession = PrivateSession(WebKitPrivateProfiles())
 }

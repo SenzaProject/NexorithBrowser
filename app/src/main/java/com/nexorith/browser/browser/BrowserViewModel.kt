@@ -24,6 +24,8 @@ class BrowserViewModel(
     appInfoRepository: AppInfoRepository,
     private val bookmarkRepository: BookmarkRepository,
     private val historyRepository: HistoryRepository,
+    /** Asked when an incognito tab is requested; false when private data cannot be isolated. */
+    private val privateBrowsingSupported: () -> Boolean = { true },
     private val clock: () -> Long = System::currentTimeMillis,
 ) : ViewModel(), WebEvents {
 
@@ -51,6 +53,8 @@ class BrowserViewModel(
             else list.take(SHORTCUT_LIMIT).map { Shortcut(it.title.ifBlank { it.url }, it.url) }
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, DEFAULT_SHORTCUTS)
+
+    val canUsePrivateTabs: Boolean get() = privateBrowsingSupported()
 
     private fun initialState(): BrowserUiState {
         val tab = TabState(id = nextTabId++)
@@ -114,8 +118,9 @@ class BrowserViewModel(
 
     // ---- Tabs ----
 
-    fun newTab(url: String? = null) {
-        val tab = TabState(id = nextTabId++)
+    fun newTab(url: String? = null, isPrivate: Boolean = false) {
+        if (isPrivate && !privateBrowsingSupported()) return
+        val tab = TabState(id = nextTabId++, isPrivate = isPrivate)
         _uiState.update { it.copy(tabs = it.tabs + tab, activeTabId = tab.id, screen = Screen.BROWSER) }
         if (url != null) loadInActiveTab(url)
     }
@@ -130,16 +135,36 @@ class BrowserViewModel(
         _uiState.update { s ->
             val index = s.tabs.indexOfFirst { it.id == id }
             if (index < 0) return@update s
+            val closed = s.tabs[index]
             val remaining = s.tabs.filterNot { it.id == id }
             if (remaining.isEmpty()) {
                 val fresh = TabState(id = nextTabId++)
                 s.copy(tabs = listOf(fresh), activeTabId = fresh.id)
             } else {
                 val active = if (s.activeTabId == id) {
-                    remaining[minOf(index, remaining.lastIndex)].id
+                    // Prefer a neighbour of the same kind so closing a tab does not switch mode.
+                    val sameKind = remaining.filter { it.isPrivate == closed.isPrivate }
+                    val candidates = sameKind.ifEmpty { remaining }
+                    val position = s.tabs.take(index).count { it.isPrivate == closed.isPrivate }
+                    candidates[minOf(position, candidates.lastIndex)].id
                 } else {
                     s.activeTabId
                 }
+                s.copy(tabs = remaining, activeTabId = active)
+            }
+        }
+    }
+
+    /** Closes every incognito tab. Their WebViews are destroyed and the private profile deleted. */
+    fun closePrivateTabs() {
+        _uiState.update { s ->
+            if (!s.hasPrivateTabs) return@update s
+            val remaining = s.tabs.filterNot { it.isPrivate }
+            if (remaining.isEmpty()) {
+                val fresh = TabState(id = nextTabId++)
+                s.copy(tabs = listOf(fresh), activeTabId = fresh.id)
+            } else {
+                val active = if (remaining.any { it.id == s.activeTabId }) s.activeTabId else remaining.last().id
                 s.copy(tabs = remaining, activeTabId = active)
             }
         }
@@ -192,7 +217,8 @@ class BrowserViewModel(
         val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
         val finalTitle = title.ifBlank { tab.title }
         updateTab(tabId) { it.copy(isLoading = false, progress = 100, title = finalTitle) }
-        if (tab.error == null && UrlResolver.isWebUrl(url)) {
+        // Incognito tabs never write to history.
+        if (tab.error == null && !tab.isPrivate && UrlResolver.isWebUrl(url)) {
             viewModelScope.launch {
                 historyRepository.record(url, finalTitle.ifBlank { url }, clock())
             }
@@ -233,18 +259,26 @@ class BrowserViewModel(
         private const val SHORTCUT_LIMIT = 8
 
         val DEFAULT_SHORTCUTS = listOf(
+            Shortcut("Google", "https://www.google.com"),
             Shortcut("Wikipedia", "https://www.wikipedia.org"),
             Shortcut("GitHub", "https://github.com"),
             Shortcut("YouTube", "https://www.youtube.com"),
-            Shortcut("DuckDuckGo", "https://duckduckgo.com"),
         )
 
         fun factory(
             appInfoRepository: AppInfoRepository,
             bookmarkRepository: BookmarkRepository,
             historyRepository: HistoryRepository,
+            privateBrowsingSupported: () -> Boolean,
         ): ViewModelProvider.Factory = viewModelFactory {
-            initializer { BrowserViewModel(appInfoRepository, bookmarkRepository, historyRepository) }
+            initializer {
+                BrowserViewModel(
+                    appInfoRepository,
+                    bookmarkRepository,
+                    historyRepository,
+                    privateBrowsingSupported,
+                )
+            }
         }
     }
 }

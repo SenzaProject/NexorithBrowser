@@ -61,4 +61,16 @@
     <string name="perm_location">location</string>
     <string name="perm_allow">Allow</string>
     <string name="perm_deny">Don\'t allow</string>
+
+    <string name="menu_new_incognito_tab">New incognito tab</string>
+    <string name="tabs_normal">Normal</string>
+    <string name="tabs_empty">No tabs open.</string>
+    <string name="incognito_tabs_empty">No incognito tabs. Tap + to open one.</string>
+    <string name="incognito_close_all">Close all incognito tabs</string>
+    <string name="incognito_title">Incognito tab</string>
+    <string name="incognito_saved_not">History, cookies and site data from incognito tabs are deleted when you close all incognito tabs.</string>
+    <string name="incognito_not_hidden">Incognito does not make you anonymous. Websites, your network and your internet provider can still see your activity. Bookmarks you add are kept.</string>
+    <string name="incognito_unsupported_title">Incognito unavailable</string>
+    <string name="incognito_unsupported_message">Incognito needs a newer Android System WebView. Update it from Google Play and try again.</string>
+    <string name="action_ok">OK</string>
 </resources>

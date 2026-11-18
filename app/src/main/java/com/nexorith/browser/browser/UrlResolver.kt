@@ -15,7 +15,8 @@ sealed interface ResolvedInput {
  */
 object UrlResolver {
 
-    const val SEARCH_URL = "https://duckduckgo.com/?q="
+    /** Default search engine: Google. */
+    const val SEARCH_URL = "https://www.google.com/search?q="
 
     private val SCHEME = Regex("^([a-zA-Z][a-zA-Z0-9+.\\-]*):")
     private val WEB_SCHEMES = setOf("http", "https")

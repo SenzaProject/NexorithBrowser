@@ -31,6 +31,13 @@ class UrlResolverTest {
     }
 
     @Test
+    fun googleIsTheDefaultSearchEngine() {
+        assertEquals("https://www.google.com/search?q=", UrlResolver.SEARCH_URL)
+        assertEquals("https://www.google.com/search?q=kopi+susu", navigate("kopi susu"))
+        assertEquals("https://www.google.com/search?q=a%26b%3Dc", navigate("a&b=c"))
+    }
+
+    @Test
     fun plainTextBecomesSearch() {
         assertEquals(UrlResolver.SEARCH_URL + "hello+world", navigate("hello world"))
         assertEquals(UrlResolver.SEARCH_URL + "nexorith", navigate("nexorith"))

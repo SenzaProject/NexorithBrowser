@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
@@ -71,7 +72,9 @@ import com.nexorith.browser.browser.Screen
 import com.nexorith.browser.browser.TabState
 import com.nexorith.browser.browser.UrlResolver
 import com.nexorith.browser.browser.WebViewRegistry
+import com.nexorith.browser.ui.components.IncognitoUnsupportedDialog
 import com.nexorith.browser.ui.home.HomeContent
+import com.nexorith.browser.ui.theme.NexorithIncognitoSurface
 import com.nexorith.browser.ui.theme.NexorithNeonPurple
 
 @Composable
@@ -82,6 +85,7 @@ fun BrowserScreen(viewModel: BrowserViewModel, registry: WebViewRegistry) {
     val recent by viewModel.recentHistory.collectAsStateWithLifecycle()
     val tab = state.activeTab
     val isBookmarked = tab.url != null && bookmarks.any { it.url == tab.url }
+    var showIncognitoUnsupported by remember { mutableStateOf(false) }
 
     BackHandler(enabled = tab.canGoBack || state.tabs.size > 1) {
         val webView = registry.peek(tab.id)
@@ -92,7 +96,7 @@ fun BrowserScreen(viewModel: BrowserViewModel, registry: WebViewRegistry) {
     val request = tab.loadRequest
     LaunchedEffect(tab.id, request?.nonce) {
         if (request != null) {
-            registry.get(tab.id).loadUrl(request.url)
+            registry.get(tab.id, tab.isPrivate).loadUrl(request.url)
             viewModel.onLoadRequestConsumed(tab.id, request.nonce)
         }
     }
@@ -132,7 +136,7 @@ fun BrowserScreen(viewModel: BrowserViewModel, registry: WebViewRegistry) {
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = {
-                            val webView = registry.get(tab.id)
+                            val webView = registry.get(tab.id, tab.isPrivate)
                             // A WebView can only have one parent; detach it from a previous holder.
                             (webView.parent as? android.view.ViewGroup)?.removeView(webView)
                             webView
@@ -146,6 +150,7 @@ fun BrowserScreen(viewModel: BrowserViewModel, registry: WebViewRegistry) {
                     recent = recent,
                     versionName = viewModel.appInfo.versionName,
                     onOpen = viewModel::openUrl,
+                    isPrivate = tab.isPrivate,
                 )
             }
             tab.error?.let { error ->
@@ -168,10 +173,21 @@ fun BrowserScreen(viewModel: BrowserViewModel, registry: WebViewRegistry) {
             },
             onTabs = { viewModel.showScreen(Screen.TABS) },
             onNewTab = { viewModel.newTab() },
+            onNewIncognitoTab = {
+                if (viewModel.canUsePrivateTabs) {
+                    viewModel.newTab(isPrivate = true)
+                } else {
+                    showIncognitoUnsupported = true
+                }
+            },
             onToggleBookmark = viewModel::toggleBookmark,
             onBookmarks = { viewModel.showScreen(Screen.BOOKMARKS) },
             onHistory = { viewModel.showScreen(Screen.HISTORY) },
         )
+    }
+
+    if (showIncognitoUnsupported) {
+        IncognitoUnsupportedDialog(onDismiss = { showIncognitoUnsupported = false })
     }
 }
 
@@ -195,7 +211,12 @@ private fun AddressBar(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp),
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = if (tab.isPrivate) NexorithIncognitoSurface else MaterialTheme.colorScheme.surface,
+        border = if (tab.isPrivate) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+        } else {
+            null
+        },
     ) {
         Row(
             modifier = Modifier.padding(start = 14.dp, end = 4.dp),
@@ -252,6 +273,16 @@ private fun AddressBar(
                     },
                 )
             }
+            if (tab.isPrivate) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_incognito),
+                    contentDescription = stringResource(R.string.incognito_title),
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier
+                        .padding(horizontal = 6.dp)
+                        .size(22.dp),
+                )
+            }
             if (UrlResolver.isWebUrl(tab.url)) {
                 IconButton(onClick = onToggleBookmark) {
                     Icon(
@@ -281,6 +312,7 @@ private fun BottomBar(
     onReloadOrStop: () -> Unit,
     onTabs: () -> Unit,
     onNewTab: () -> Unit,
+    onNewIncognitoTab: () -> Unit,
     onToggleBookmark: () -> Unit,
     onBookmarks: () -> Unit,
     onHistory: () -> Unit,
@@ -314,7 +346,13 @@ private fun BottomBar(
                 Box(
                     modifier = Modifier
                         .size(24.dp)
-                        .border(BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface), RoundedCornerShape(6.dp)),
+                        .border(
+                            BorderStroke(
+                                2.dp,
+                                if (tab.isPrivate) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
+                            ),
+                            RoundedCornerShape(6.dp),
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -332,6 +370,10 @@ private fun BottomBar(
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_new_tab)) },
                         onClick = { menuOpen = false; onNewTab() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_new_incognito_tab)) },
+                        onClick = { menuOpen = false; onNewIncognitoTab() },
                     )
                     DropdownMenuItem(
                         text = {
@@ -370,7 +412,6 @@ private fun BottomBar(
                     HorizontalDivider()
                     listOf(
                         R.string.menu_downloads,
-                        R.string.menu_incognito,
                         R.string.menu_adblock,
                         R.string.menu_vpn,
                     ).forEach { label ->

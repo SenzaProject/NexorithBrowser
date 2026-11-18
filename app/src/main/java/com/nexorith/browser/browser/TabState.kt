@@ -17,6 +17,8 @@ data class TabState(
     val canGoForward: Boolean = false,
     val loadRequest: LoadRequest? = null,
     val error: PageError? = null,
+    /** Incognito tab: no history is saved and its web data lives in the private profile. */
+    val isPrivate: Boolean = false,
 ) {
     val isHome: Boolean get() = url == null && error == null
 }
@@ -29,6 +31,7 @@ data class BrowserUiState(
     val screen: Screen = Screen.BROWSER,
 ) {
     val activeTab: TabState get() = tabs.first { it.id == activeTabId }
+    val hasPrivateTabs: Boolean get() = tabs.any { it.isPrivate }
 }
 
 data class Shortcut(val title: String, val url: String)

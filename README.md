@@ -15,12 +15,12 @@ None of the code below has been compiled or run on a device yet; the first GitHu
 | Feature | Status | Notes |
 |---|---|---|
 | Project setup, MVVM structure, CI | IMPLEMENTED | Stage 1 |
-| Branding, theme, Home, menu, ID/EN strings | IMPLEMENTED | Stage 2. Logo is a vector from `assets/nexorith-logo.svg` |
-| WebView browsing | IMPLEMENTED | Stage 3. HTTPS default, back/forward/reload/stop, error pages, SSL errors never bypassed, camera/mic/location prompts |
+| Branding, theme, Home, menu, ID/EN strings | IMPLEMENTED | Stage 2. Logo is a vector from `assets/nexorith-logo.svg`. Text colours and status-bar icons fixed to stay readable on the dark background |
+| WebView browsing | IMPLEMENTED | Stage 3. Google is the default search engine. HTTPS default, back/forward/reload/stop, error pages, SSL errors never bypassed, camera/mic/location prompts |
 | File upload chooser, fullscreen video, downloads | NOT IMPLEMENTED | Downloads come in stage 7 |
 | Multi-tab, bookmarks, history | IMPLEMENTED | Stage 4. SQLite storage. Open tabs are not restored after the app process is killed |
 | AdBlock | NOT IMPLEMENTED | Shown as "Upcoming" |
-| Incognito | NOT IMPLEMENTED | Shown as "Upcoming" |
+| Incognito | IMPLEMENTED | Stage 6. Separate WebView profile per private session (needs a WebView with multi-profile support; otherwise unavailable, never falls back to the normal profile). No history, profile deleted when the last incognito tab closes. See `docs/TEST-INCOGNITO.md` |
 | Download manager / accelerator | NOT IMPLEMENTED | Shown as "Upcoming" |
 | VPN (needs a real backend server) | NOT IMPLEMENTED | Shown as "Upcoming" |
 | Settings screen | NOT IMPLEMENTED | |

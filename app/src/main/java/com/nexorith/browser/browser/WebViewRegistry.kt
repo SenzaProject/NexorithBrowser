@@ -3,6 +3,7 @@ package com.nexorith.browser.browser
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
@@ -17,26 +18,33 @@ import android.webkit.WebViewClient
 import android.net.http.SslError
 import android.content.Intent
 import android.net.Uri
+import com.nexorith.browser.incognito.PrivateSession
+import com.nexorith.browser.incognito.bindWebViewToProfile
 
 /**
  * Owns one WebView per tab. The ViewModel never touches WebViews; it only receives [WebEvents].
+ * Private tabs get a WebView bound to the private profile of [privateSession]; that profile is
+ * deleted when the last private WebView is destroyed.
  * Must be used from the main thread.
  */
 class WebViewRegistry(
     private val context: Context,
     private val events: WebEvents,
+    private val privateSession: PrivateSession,
     private val onSitePermission: (SitePermissionRequest) -> Unit,
 ) {
     private val views = LinkedHashMap<Long, WebView>()
+    private val privateTabIds = HashSet<Long>()
 
     fun peek(tabId: Long): WebView? = views[tabId]
 
-    fun get(tabId: Long): WebView = views.getOrPut(tabId) { create(tabId) }
+    fun get(tabId: Long, isPrivate: Boolean): WebView =
+        views[tabId] ?: create(tabId, isPrivate).also { views[tabId] = it }
 
     /** Destroys WebViews of tabs that no longer exist. */
     fun retain(tabIds: Set<Long>) {
         val stale = views.keys.filter { it !in tabIds }
-        stale.forEach { id -> views.remove(id)?.let(::destroy) }
+        stale.forEach { id -> views.remove(id)?.let { destroy(id, it) } }
     }
 
     fun pauseAll() = views.values.forEach { it.onPause() }
@@ -44,13 +52,14 @@ class WebViewRegistry(
     fun resumeAll() = views.values.forEach { it.onResume() }
 
     fun destroyAll() {
-        views.values.forEach(::destroy)
+        views.entries.toList().forEach { (id, view) -> destroy(id, view) }
         views.clear()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun create(tabId: Long): WebView {
+    private fun create(tabId: Long, isPrivate: Boolean): WebView {
         val webView = WebView(context)
+        if (isPrivate) bindPrivate(tabId, webView)
         webView.layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -82,12 +91,34 @@ class WebViewRegistry(
         return webView
     }
 
-    private fun destroy(webView: WebView) {
+    /** Binds the WebView to the private profile before it loads anything; never falls back. */
+    private fun bindPrivate(tabId: Long, webView: WebView) {
+        val profile = privateSession.acquire()
+        try {
+            bindWebViewToProfile(webView, profile)
+        } catch (t: Throwable) {
+            privateSession.release()
+            webView.destroy()
+            throw t
+        }
+        privateTabIds += tabId
+        // Keep autofill services from saving what is typed into private pages.
+        webView.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    }
+
+    private fun destroy(tabId: Long, webView: WebView) {
+        val isPrivate = privateTabIds.remove(tabId)
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.stopLoading()
+        if (isPrivate) {
+            webView.clearHistory()
+            webView.clearCache(true)
+            webView.clearFormData()
+        }
         webView.webChromeClient = null
         webView.webViewClient = WebViewClient()
         webView.destroy()
+        if (isPrivate) privateSession.release()
     }
 }
 

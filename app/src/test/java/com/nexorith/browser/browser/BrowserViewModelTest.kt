@@ -24,6 +24,7 @@ class BrowserViewModelTest {
     private lateinit var history: FakeHistoryRepository
     private lateinit var vm: BrowserViewModel
     private var now = 1_000L
+    private var privateSupported = true
 
     @Before
     fun setUp() {
@@ -34,6 +35,7 @@ class BrowserViewModelTest {
             BuildAppInfoRepository(AppInfo("Nexorith Browser", "NexorithLab", "0.0.0")),
             bookmarks,
             history,
+            privateBrowsingSupported = { privateSupported },
             clock = { now++ },
         )
     }
@@ -175,5 +177,116 @@ class BrowserViewModelTest {
         vm.openUrl("https://example.com")
         assertEquals(Screen.BROWSER, state.screen)
         assertEquals("https://example.com", state.activeTab.url)
+    }
+
+    // ---- Incognito ----
+
+    @Test
+    fun incognitoTabIsPrivateAndActive() {
+        vm.newTab(isPrivate = true)
+        assertTrue(state.activeTab.isPrivate)
+        assertEquals(2, state.tabs.size)
+        assertTrue(state.hasPrivateTabs)
+        assertEquals(Screen.BROWSER, state.screen)
+    }
+
+    @Test
+    fun incognitoTabIsNotCreatedWhenUnsupported() {
+        privateSupported = false
+        assertEquals(false, vm.canUsePrivateTabs)
+        vm.newTab(isPrivate = true)
+        assertEquals(1, state.tabs.size)
+        assertEquals(false, state.hasPrivateTabs)
+    }
+
+    @Test
+    fun incognitoPagesAreNotRecordedInHistory() {
+        vm.newTab(isPrivate = true)
+        val id = state.activeTabId
+        vm.onPageStarted(id, "https://secret.example/")
+        vm.onPageFinished(id, "https://secret.example/", "Secret")
+        assertTrue(vm.history.value.isEmpty())
+        assertTrue(vm.recentHistory.value.isEmpty())
+        assertEquals(false, state.activeTab.isLoading)
+    }
+
+    @Test
+    fun normalTabsStillRecordHistoryWhileIncognitoIsOpen() {
+        val normal = state.activeTabId
+        vm.newTab(isPrivate = true)
+        vm.onPageFinished(normal, "https://example.com/", "Example")
+        assertEquals(1, vm.history.value.size)
+    }
+
+    @Test
+    fun closeAllPrivateTabsKeepsNormalTabsAndSelectsOne() {
+        val normal = state.activeTabId
+        vm.newTab(isPrivate = true)
+        vm.newTab(isPrivate = true)
+        assertEquals(3, state.tabs.size)
+
+        vm.closePrivateTabs()
+        assertEquals(listOf(normal), state.tabs.map { it.id })
+        assertEquals(normal, state.activeTabId)
+        assertEquals(false, state.hasPrivateTabs)
+    }
+
+    @Test
+    fun closeAllPrivateTabsKeepsActiveNormalTab() {
+        vm.newTab(isPrivate = true)
+        val normal = state.tabs.first { !it.isPrivate }.id
+        vm.selectTab(normal)
+        vm.closePrivateTabs()
+        assertEquals(normal, state.activeTabId)
+    }
+
+    @Test
+    fun closingLastTabWhenOnlyIncognitoRemainsLeavesFreshNormalTab() {
+        val normal = state.activeTabId
+        vm.newTab(isPrivate = true)
+        vm.closeTab(normal)
+        assertEquals(1, state.tabs.size)
+        assertTrue(state.activeTab.isPrivate)
+
+        vm.closeTab(state.activeTabId)
+        assertEquals(1, state.tabs.size)
+        assertEquals(false, state.activeTab.isPrivate)
+        assertTrue(state.activeTab.isHome)
+    }
+
+    @Test
+    fun closingActiveIncognitoTabPrefersAnotherIncognitoTab() {
+        vm.newTab(isPrivate = true)
+        val firstPrivate = state.activeTabId
+        vm.newTab(isPrivate = true)
+        val secondPrivate = state.activeTabId
+        vm.closeTab(secondPrivate)
+        assertEquals(firstPrivate, state.activeTabId)
+
+        vm.closeTab(firstPrivate)
+        assertEquals(false, state.activeTab.isPrivate)
+    }
+
+    @Test
+    fun closeAllPrivateTabsWithNoneOpenChangesNothing() {
+        val before = state
+        vm.closePrivateTabs()
+        assertEquals(before, state)
+    }
+
+    @Test
+    fun incognitoPagesCanStillBeBookmarkedExplicitly() {
+        vm.newTab(isPrivate = true)
+        val id = state.activeTabId
+        vm.onPageStarted(id, "https://example.com/")
+        vm.onTitle(id, "Example")
+        vm.toggleBookmark()
+        assertEquals(1, vm.bookmarks.value.size)
+    }
+
+    @Test
+    fun defaultShortcutsIncludeGoogle() {
+        assertEquals("https://www.google.com", BrowserViewModel.DEFAULT_SHORTCUTS.first().url)
+        assertTrue(BrowserViewModel.DEFAULT_SHORTCUTS.none { it.url.contains("duckduckgo") })
     }
 }

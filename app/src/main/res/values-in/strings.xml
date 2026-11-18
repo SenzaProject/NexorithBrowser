@@ -61,4 +61,16 @@
     <string name="perm_location">lokasi</string>
     <string name="perm_allow">Izinkan</string>
     <string name="perm_deny">Jangan izinkan</string>
+
+    <string name="menu_new_incognito_tab">Tab penyamaran baru</string>
+    <string name="tabs_normal">Normal</string>
+    <string name="tabs_empty">Tidak ada tab terbuka.</string>
+    <string name="incognito_tabs_empty">Tidak ada tab penyamaran. Ketuk + untuk membuka.</string>
+    <string name="incognito_close_all">Tutup semua tab penyamaran</string>
+    <string name="incognito_title">Tab penyamaran</string>
+    <string name="incognito_saved_not">Riwayat, cookie, dan data situs dari tab penyamaran dihapus saat Anda menutup semua tab penyamaran.</string>
+    <string name="incognito_not_hidden">Mode penyamaran tidak membuat Anda anonim. Situs web, jaringan, dan penyedia internet Anda tetap dapat melihat aktivitas Anda. Bookmark yang Anda tambahkan tetap tersimpan.</string>
+    <string name="incognito_unsupported_title">Penyamaran tidak tersedia</string>
+    <string name="incognito_unsupported_message">Penyamaran memerlukan Android System WebView yang lebih baru. Perbarui lewat Google Play lalu coba lagi.</string>
+    <string name="action_ok">OK</string>
 </resources>

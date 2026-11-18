@@ -4,6 +4,7 @@ import com.nexorith.browser.bookmarks.Bookmark
 import com.nexorith.browser.bookmarks.BookmarkRepository
 import com.nexorith.browser.history.HistoryEntry
 import com.nexorith.browser.history.HistoryRepository
+import com.nexorith.browser.incognito.PrivateProfiles
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -48,4 +49,24 @@ class FakeHistoryRepository : HistoryRepository {
     override suspend fun clear() {
         items.value = emptyList()
     }
+}
+
+class FakePrivateProfiles(override var isSupported: Boolean = true) : PrivateProfiles {
+    val existing = linkedSetOf<String>()
+    val deleted = mutableListOf<String>()
+    var failDeletes = false
+
+    override fun create(name: String) {
+        check(isSupported)
+        existing += name
+    }
+
+    override fun delete(name: String): Boolean {
+        if (failDeletes) return false
+        existing -= name
+        deleted += name
+        return true
+    }
+
+    override fun listNames(): List<String> = existing.toList()
 }

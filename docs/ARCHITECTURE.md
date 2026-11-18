@@ -16,7 +16,7 @@ UI (Compose screen) → ViewModel (StateFlow<UiState>) → Repository (interface
 | `browser` | `BrowserViewModel` (tab state), `UrlResolver`, `WebViewRegistry` (one WebView per tab), site permission requests | 3–4 |
 | `bookmarks`, `history` | Repository interface + SQLite implementation | 4 |
 | `adblock` | Filter parser, rule matching, request interception | 5 |
-| `incognito` | Isolated profile and session cleanup | 6 |
+| `incognito` | `PrivateSession` (profile lifetime), `PrivateProfiles` (storage interface), `WebKitPrivateProfiles` (AndroidX WebKit multi-profile) | 6 |
 | `downloads` | Download manager and accelerator | 7–8 |
 | `vpn` | `VpnService` client and real backend | 9 |
 | `network` | Shared HTTP utilities | as needed |
@@ -31,7 +31,9 @@ Empty packages contain only a `.gitkeep` until their stage starts.
 
 Security defaults: HTTPS-first address resolution, `javascript:`/`file:`/`content:`/`data:` blocked, cleartext traffic disabled, mixed content blocked, file/content access off, SSL errors cancelled, third-party cookies off, WebView debugging only in debug builds.
 
-Known limits: tabs are not restored after process death; the activity handles configuration changes itself so WebViews survive rotation.
+Incognito: a private tab (`TabState.isPrivate`) gets a WebView bound to a private WebView profile before it loads anything. `PrivateSession` creates the profile when the first private WebView is created and deletes it (cookies, cache, site storage) when the last one is destroyed. Profiles that could not be deleted, or were left by a crash, are removed on the next start. Private tabs never write history. If the installed WebView has no multi-profile support, incognito is unavailable and the app never falls back to the normal profile.
+
+Known limits: tabs (including incognito tabs) are not restored after process death; the activity handles configuration changes itself so WebViews survive rotation.
 
 ## Conventions
 

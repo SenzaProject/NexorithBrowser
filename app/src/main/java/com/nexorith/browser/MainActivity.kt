@@ -1,8 +1,12 @@
 package com.nexorith.browser
 
+import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -17,12 +21,14 @@ import com.nexorith.browser.ui.theme.NexorithTheme
 
 class MainActivity : ComponentActivity() {
 
+    private val container get() = (application as NexorithApp).container
+
     private val viewModel: BrowserViewModel by viewModels {
-        val container = (application as NexorithApp).container
         BrowserViewModel.factory(
             container.appInfoRepository,
             container.bookmarkRepository,
             container.historyRepository,
+            privateBrowsingSupported = { container.privateSession.isSupported },
         )
     }
 
@@ -31,11 +37,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The app is dark-only: force light status/navigation bar icons whatever the system theme is.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         // Remote debugging only in debug builds.
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
-        registry = WebViewRegistry(this, viewModel, ::onSitePermission)
+        registry = WebViewRegistry(this, viewModel, container.privateSession, ::onSitePermission)
+
+        // Remove private data left behind by a crash or force stop, after the first frame.
+        Handler(Looper.getMainLooper()).post { container.privateSession.purgeLeftovers() }
 
         setContent {
             NexorithTheme {
@@ -62,6 +75,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         registry.pauseAll()
+        container.privateSession.retryPending()
         super.onPause()
     }
 
