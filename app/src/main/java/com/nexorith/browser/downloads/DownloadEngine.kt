@@ -7,11 +7,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.io.RandomAccessFile
+import java.util.concurrent.Executors
 import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Single-connection downloader with resume.
@@ -219,7 +224,7 @@ class DownloadEngine(
                 val input = response.body
                 while (true) {
                     val n = try {
-                        input.read(buffer)
+                        input.readCancellable(buffer)
                     } catch (e: IOException) {
                         coroutineContext.ensureActive()
                         return Attempt.Retry(DownloadFailure(FailureKind.NETWORK), receivedAny)
@@ -255,6 +260,23 @@ class DownloadEngine(
         return Attempt.Done(downloaded)
     }
 
+    /**
+     * Reads on a helper thread so that cancelling the coroutine returns at once. A blocked
+     * HttpURLConnection read holds the stream's lock, so even closing the connection can wait
+     * for it; the abandoned read ends when the watcher's close (or the read timeout) fires.
+     */
+    private suspend fun InputStream.readCancellable(buffer: ByteArray): Int =
+        suspendCancellableCoroutine { cont ->
+            readers.execute {
+                try {
+                    val n = read(buffer)
+                    cont.resume(n)
+                } catch (t: Throwable) {
+                    cont.resumeWithException(t)
+                }
+            }
+        }
+
     private fun truncate(file: File) {
         runCatching { RandomAccessFile(file, "rw").use { it.setLength(0) } }
     }
@@ -269,6 +291,9 @@ class DownloadEngine(
     }
 
     private companion object {
+        val readers = Executors.newCachedThreadPool { r ->
+            Thread(r, "download-read").apply { isDaemon = true }
+        }
         const val MAX_BACKOFF_MS = 30_000L
         const val MAX_RETRY_AFTER_MS = 120_000L
         const val SPACE_MARGIN = 8L * 1024 * 1024
