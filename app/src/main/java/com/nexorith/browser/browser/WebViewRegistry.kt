@@ -18,6 +18,7 @@ import android.webkit.WebViewClient
 import android.net.http.SslError
 import android.content.Intent
 import android.net.Uri
+import com.nexorith.browser.downloads.DownloadRequest
 import com.nexorith.browser.incognito.PrivateSession
 import com.nexorith.browser.incognito.bindWebViewToProfile
 
@@ -32,6 +33,7 @@ class WebViewRegistry(
     private val events: WebEvents,
     private val privateSession: PrivateSession,
     private val onSitePermission: (SitePermissionRequest) -> Unit,
+    private val onDownload: (DownloadRequest) -> Unit,
 ) {
     private val views = LinkedHashMap<Long, WebView>()
     private val privateTabIds = HashSet<Long>()
@@ -88,6 +90,23 @@ class WebViewRegistry(
 
         webView.webViewClient = NexorithWebViewClient(tabId, events)
         webView.webChromeClient = NexorithChromeClient(tabId, events, onSitePermission)
+
+        // Files the page asks to download are handed to the download manager. Private tabs send no
+        // cookies: the cookie jar of the private profile is not reachable through CookieManager.
+        webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+            onDownload(
+                DownloadRequest(
+                    url = url,
+                    userAgent = userAgent,
+                    contentDisposition = contentDisposition,
+                    mimeType = mimeType,
+                    contentLength = contentLength,
+                    referer = webView.url,
+                    cookies = if (isPrivate) null else CookieManager.getInstance().getCookie(url),
+                    isPrivate = isPrivate,
+                ),
+            )
+        }
         return webView
     }
 
@@ -115,6 +134,7 @@ class WebViewRegistry(
             webView.clearCache(true)
             webView.clearFormData()
         }
+        webView.setDownloadListener(null)
         webView.webChromeClient = null
         webView.webViewClient = WebViewClient()
         webView.destroy()

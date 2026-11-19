@@ -26,14 +26,17 @@ import com.nexorith.browser.browser.Screen
 import com.nexorith.browser.browser.SiteFeature
 import com.nexorith.browser.browser.SitePermissionRequest
 import com.nexorith.browser.browser.WebViewRegistry
+import com.nexorith.browser.downloads.DownloadsViewModel
 import com.nexorith.browser.ui.bookmarks.BookmarksScreen
 import com.nexorith.browser.ui.browser.BrowserScreen
+import com.nexorith.browser.ui.downloads.DownloadsScreen
 import com.nexorith.browser.ui.history.HistoryScreen
 import com.nexorith.browser.ui.tabs.TabsScreen
 
 @Composable
 fun NexorithRoot(
     viewModel: BrowserViewModel,
+    downloadsViewModel: DownloadsViewModel,
     registry: WebViewRegistry,
     pendingPermission: SitePermissionRequest?,
     onPermissionHandled: () -> Unit,
@@ -58,6 +61,7 @@ fun NexorithRoot(
             Screen.TABS -> TabsScreen(viewModel)
             Screen.BOOKMARKS -> BookmarksScreen(viewModel)
             Screen.HISTORY -> HistoryScreen(viewModel)
+            Screen.DOWNLOADS -> DownloadsScreen(downloadsViewModel) { viewModel.showScreen(Screen.BROWSER) }
         }
     }
 

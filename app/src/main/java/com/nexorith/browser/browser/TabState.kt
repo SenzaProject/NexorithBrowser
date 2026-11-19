@@ -23,7 +23,7 @@ data class TabState(
     val isHome: Boolean get() = url == null && error == null
 }
 
-enum class Screen { BROWSER, TABS, BOOKMARKS, HISTORY }
+enum class Screen { BROWSER, TABS, BOOKMARKS, HISTORY, DOWNLOADS }
 
 data class BrowserUiState(
     val tabs: List<TabState>,

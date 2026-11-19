@@ -183,6 +183,7 @@ fun BrowserScreen(viewModel: BrowserViewModel, registry: WebViewRegistry) {
             onToggleBookmark = viewModel::toggleBookmark,
             onBookmarks = { viewModel.showScreen(Screen.BOOKMARKS) },
             onHistory = { viewModel.showScreen(Screen.HISTORY) },
+            onDownloads = { viewModel.showScreen(Screen.DOWNLOADS) },
         )
     }
 
@@ -313,6 +314,7 @@ private fun BottomBar(
     onTabs: () -> Unit,
     onNewTab: () -> Unit,
     onNewIncognitoTab: () -> Unit,
+    onDownloads: () -> Unit,
     onToggleBookmark: () -> Unit,
     onBookmarks: () -> Unit,
     onHistory: () -> Unit,
@@ -376,6 +378,10 @@ private fun BottomBar(
                         onClick = { menuOpen = false; onNewIncognitoTab() },
                     )
                     DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_downloads)) },
+                        onClick = { menuOpen = false; onDownloads() },
+                    )
+                    DropdownMenuItem(
                         text = {
                             Text(
                                 stringResource(
@@ -411,7 +417,6 @@ private fun BottomBar(
                     )
                     HorizontalDivider()
                     listOf(
-                        R.string.menu_downloads,
                         R.string.menu_adblock,
                         R.string.menu_vpn,
                     ).forEach { label ->
