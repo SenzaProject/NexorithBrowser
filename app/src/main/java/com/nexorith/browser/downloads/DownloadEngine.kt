@@ -114,14 +114,14 @@ class DownloadEngine(
                 try {
                     awaitCancellation()
                 } finally {
-                    runCatching { response.close() }
+                    closeInBackground(response)
                 }
             }
             try {
                 handle(response, spec, file, existing, state, onProgress)
             } finally {
                 watcher.cancel()
-                runCatching { response.close() }
+                closeInBackground(response)
             }
         }
     }
@@ -276,6 +276,14 @@ class DownloadEngine(
                 }
             }
         }
+
+    /**
+     * disconnect() can block until a pending read ends, so it never runs on the coroutine's own
+     * thread: that would make cancellation wait for it.
+     */
+    private fun closeInBackground(response: HttpResponse) {
+        readers.execute { runCatching { response.close() } }
+    }
 
     private fun truncate(file: File) {
         runCatching { RandomAccessFile(file, "rw").use { it.setLength(0) } }
