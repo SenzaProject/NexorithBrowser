@@ -112,9 +112,9 @@ class DownloadEngineTest {
         TestServer { exchange ->
             if (requestNumber.incrementAndGet() == 1) {
                 // Announce the full size, send half, hang up.
-                exchange.sendResponseHeaders(200, data.size.toLong())
-                exchange.responseBody.write(data, 0, 120_000)
-                exchange.responseBody.flush()
+                exchange.sendHeaders(200, data.size.toLong())
+                exchange.write(data, 0, 120_000)
+                exchange.flush()
                 exchange.close()
             } else {
                 TestServer.serve(exchange, data)
@@ -136,8 +136,8 @@ class DownloadEngineTest {
         val requestNumber = AtomicInteger()
         TestServer { exchange ->
             if (requestNumber.incrementAndGet() == 1) {
-                exchange.responseHeaders.add("Retry-After", "2")
-                exchange.sendResponseHeaders(429, -1)
+                exchange.header("Retry-After", "2")
+                exchange.sendHeaders(429, -1)
             } else {
                 TestServer.serve(exchange, data)
             }
@@ -153,8 +153,8 @@ class DownloadEngineTest {
     @Test
     fun failsInsteadOfWaitingForAVeryLongRetryAfter() {
         TestServer { exchange ->
-            exchange.responseHeaders.add("Retry-After", "3600")
-            exchange.sendResponseHeaders(429, -1)
+            exchange.header("Retry-After", "3600")
+            exchange.sendHeaders(429, -1)
         }.use { server ->
             val result = fetch(server.baseUrl + "/f.bin")
 
@@ -166,7 +166,7 @@ class DownloadEngineTest {
 
     @Test
     fun clientErrorsAreNotRetried() {
-        TestServer { it.sendResponseHeaders(404, -1) }.use { server ->
+        TestServer { it.sendHeaders(404, -1) }.use { server ->
             val result = fetch(server.baseUrl + "/missing")
 
             assertEquals(DownloadResult.Failed(DownloadFailure(FailureKind.HTTP, 404)), result)
@@ -176,7 +176,7 @@ class DownloadEngineTest {
 
     @Test
     fun serverErrorsAreRetriedWithExponentialBackoffThenGiveUp() {
-        TestServer { it.sendResponseHeaders(500, -1) }.use { server ->
+        TestServer { it.sendHeaders(500, -1) }.use { server ->
             val result = fetch(server.baseUrl + "/f.bin", engine = engine(maxFailures = 2))
 
             assertEquals(DownloadResult.Failed(DownloadFailure(FailureKind.HTTP, 500)), result)
@@ -200,8 +200,8 @@ class DownloadEngineTest {
     fun cookiesAreDroppedWhenARedirectLeavesTheHost() {
         TestServer { TestServer.serve(it, data) }.use { target ->
             TestServer { exchange ->
-                exchange.responseHeaders.add("Location", "http://localhost:${target.baseUrl.substringAfterLast(':')}/f.bin")
-                exchange.sendResponseHeaders(302, -1)
+                exchange.header("Location", "http://localhost:${target.baseUrl.substringAfterLast(':')}/f.bin")
+                exchange.sendHeaders(302, -1)
             }.use { origin ->
                 val result = runBlocking {
                     engine().download(spec(origin.baseUrl + "/start", cookies = "session=secret"), file) {}
@@ -224,10 +224,14 @@ class DownloadEngineTest {
     @Test
     fun cancellingStopsTheTransferAndKeepsThePartialFile() {
         TestServer { exchange ->
-            exchange.sendResponseHeaders(200, data.size.toLong())
-            exchange.responseBody.write(data, 0, 65_536)
-            exchange.responseBody.flush()
-            Thread.sleep(15_000) // stall: only closing the connection can end the client's read
+            exchange.sendHeaders(200, data.size.toLong())
+            exchange.write(data, 0, 65_536)
+            exchange.flush()
+            try {
+                Thread.sleep(15_000) // stall: only closing the connection can end the client's read
+            } catch (e: InterruptedException) {
+                // the test finished and closed the server
+            }
         }.use { server ->
             val started = System.nanoTime()
             runBlocking {

@@ -1,171 +1,148 @@
 package com.nexorith.browser.downloads
 
-import java.io.BufferedInputStream
 import java.io.Closeable
 import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
 import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.URI
-import java.util.concurrent.CopyOnWriteArrayList
+import java.util.Collections
+import java.util.concurrent.Executors
+import java.util.concurrent.ThreadFactory
 
-/** Case-insensitive, multi-valued HTTP header map (minimal stand-in for the JDK's com.sun Headers). */
-class Headers {
-    private val map = LinkedHashMap<String, MutableList<String>>()
-
-    val entries: Set<Map.Entry<String, List<String>>>
-        get() = synchronized(map) { map.entries.map { java.util.AbstractMap.SimpleEntry(it.key, it.value.toList()) }.toSet() }
-
-    fun add(name: String, value: String) {
-        synchronized(map) {
-            val key = map.keys.firstOrNull { it.equals(name, ignoreCase = true) } ?: name
-            map.getOrPut(key) { mutableListOf() }.add(value)
-        }
-    }
-
-    fun getFirst(name: String): String? = synchronized(map) {
-        map.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value?.firstOrNull()
-    }
-}
-
-/** One request/response pair on a [TestServer] connection. */
-class HttpExchange internal constructor(
-    private val socket: Socket,
-    val requestURI: URI,
-    val requestHeaders: Headers,
-) {
-    val responseHeaders = Headers()
-    val responseBody: OutputStream get() = socket.getOutputStream()
-
-    @Volatile private var closed = false
-
-    /** [length] of -1 means "no body"; any other value is sent as Content-Length. */
-    fun sendResponseHeaders(code: Int, length: Long) {
-        val out = socket.getOutputStream()
-        val head = StringBuilder("HTTP/1.1 $code ${reason(code)}\r\n")
-        responseHeaders.entries.forEach { (name, values) ->
-            values.forEach { head.append(name).append(": ").append(it).append("\r\n") }
-        }
-        head.append("Content-Length: ").append(if (length < 0) 0 else length).append("\r\n")
-        head.append("Connection: close\r\n\r\n")
-        out.write(head.toString().toByteArray(Charsets.ISO_8859_1))
-        out.flush()
-    }
-
-    fun close() {
-        if (closed) return
-        closed = true
-        runCatching { socket.getOutputStream().flush() }
-        runCatching { socket.close() }
-    }
-
-    private fun reason(code: Int) = when (code) {
-        200 -> "OK"
-        206 -> "Partial Content"
-        302 -> "Found"
-        404 -> "Not Found"
-        416 -> "Range Not Satisfiable"
-        429 -> "Too Many Requests"
-        500 -> "Internal Server Error"
-        else -> "Status"
-    }
-}
-
-/** A real HTTP server on localhost (plain sockets), so the engine is tested over actual connections. */
-class TestServer(private val handler: (HttpExchange) -> Unit) : Closeable {
-    private val server = ServerSocket().apply {
-        reuseAddress = true
-        bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
-    }
-    private val connections = CopyOnWriteArrayList<Socket>()
-    val requests = java.util.Collections.synchronizedList(mutableListOf<Request>())
+/**
+ * A small real HTTP server on localhost, built on plain sockets (the JDK's own HttpServer is not
+ * visible to Android unit tests). Every request gets its own connection, closed after the reply.
+ * The engine is therefore tested over actual sockets, not mocks.
+ */
+class TestServer(private val handler: (Exchange) -> Unit) : Closeable {
 
     class Request(val path: String, val headers: Map<String, String>)
 
-    init {
-        Thread({
-            while (!server.isClosed) {
-                val socket = try {
-                    server.accept()
-                } catch (e: IOException) {
-                    break
-                }
-                connections += socket
-                Thread({ handle(socket) }, "test-server-conn").apply { isDaemon = true }.start()
-            }
-        }, "test-server-accept").apply { isDaemon = true }.start()
+    class Exchange(val request: Request, private val socket: Socket) {
+        private val out = socket.getOutputStream()
+        private val responseHeaders = LinkedHashMap<String, String>()
+
+        val path: String get() = request.path
+        val requestHeaders: Map<String, String> get() = request.headers
+
+        fun header(name: String, value: String) {
+            responseHeaders[name] = value
+        }
+
+        /** Sends the status line and headers. [length] is the body size; -1 means no body. */
+        fun sendHeaders(code: Int, length: Long) {
+            val builder = StringBuilder("HTTP/1.1 $code ${reason(code)}\r\n")
+            for ((name, value) in responseHeaders) builder.append(name).append(": ").append(value).append("\r\n")
+            builder.append("Content-Length: ").append(if (length < 0) 0 else length).append("\r\n")
+            builder.append("Connection: close\r\n\r\n")
+            out.write(builder.toString().toByteArray(Charsets.ISO_8859_1))
+            out.flush()
+        }
+
+        fun write(bytes: ByteArray, offset: Int = 0, length: Int = bytes.size) {
+            out.write(bytes, offset, length)
+        }
+
+        fun flush() = out.flush()
+
+        fun close() {
+            runCatching { out.flush() }
+            runCatching { socket.close() }
+        }
+
+        private fun reason(code: Int) = when (code) {
+            200 -> "OK"
+            206 -> "Partial Content"
+            302 -> "Found"
+            404 -> "Not Found"
+            416 -> "Range Not Satisfiable"
+            429 -> "Too Many Requests"
+            500 -> "Internal Server Error"
+            else -> "Status"
+        }
     }
 
-    private fun handle(socket: Socket) {
-        var exchange: HttpExchange? = null
+    private val server = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
+    private val workers = Executors.newCachedThreadPool(ThreadFactory { task ->
+        Thread(task).apply { isDaemon = true }
+    })
+    val requests: MutableList<Request> = Collections.synchronizedList(mutableListOf<Request>())
+
+    val baseUrl: String get() = "http://127.0.0.1:${server.localPort}"
+
+    init {
+        workers.execute {
+            while (!server.isClosed) {
+                val client = try {
+                    server.accept()
+                } catch (e: IOException) {
+                    return@execute // closed
+                }
+                workers.execute { serve(client) }
+            }
+        }
+    }
+
+    private fun serve(client: Socket) {
+        var exchange: Exchange? = null
         try {
-            val input = BufferedInputStream(socket.getInputStream())
+            val input = client.getInputStream()
             val requestLine = readLine(input) ?: return
-            val target = requestLine.split(' ').getOrNull(1) ?: return
-            val headers = Headers()
+            val headers = LinkedHashMap<String, String>()
             while (true) {
                 val line = readLine(input) ?: return
                 if (line.isEmpty()) break
-                val idx = line.indexOf(':')
-                if (idx > 0) headers.add(line.substring(0, idx).trim(), line.substring(idx + 1).trim())
+                val colon = line.indexOf(':')
+                if (colon > 0) headers[line.substring(0, colon).trim().lowercase()] = line.substring(colon + 1).trim()
             }
-            val uri = URI.create(target)
-            exchange = HttpExchange(socket, uri, headers)
-            requests += Request(
-                uri.path,
-                headers.entries.associate { it.key.lowercase() to it.value.joinToString(",") },
-            )
+            val path = requestLine.split(' ').getOrElse(1) { "/" }.substringBefore('?')
+            val request = Request(path, headers)
+            requests += request
+            exchange = Exchange(request, client)
             handler(exchange)
         } catch (e: IOException) {
             // The client may hang up on purpose.
         } finally {
-            exchange?.close() ?: runCatching { socket.close() }
-            connections.remove(socket)
+            exchange?.close() ?: runCatching { client.close() }
         }
     }
 
-    private fun readLine(input: InputStream): String? {
-        val sb = StringBuilder()
+    private fun readLine(input: java.io.InputStream): String? {
+        val line = StringBuilder()
         while (true) {
             val b = input.read()
-            if (b < 0) return if (sb.isEmpty()) null else sb.toString()
-            if (b == '\n'.code) return sb.toString().trimEnd('\r')
-            sb.append(b.toChar())
+            if (b < 0) return if (line.isEmpty()) null else line.toString()
+            if (b == '\n'.code) return line.toString().trimEnd('\r')
+            line.append(b.toChar())
         }
     }
-
-    val baseUrl: String get() = "http://127.0.0.1:${server.localPort}"
 
     override fun close() {
         runCatching { server.close() }
-        connections.forEach { runCatching { it.close() } }
+        workers.shutdownNow()
     }
 
     companion object {
-        /** Serves [data], honouring a "Range: bytes=N-" header when [ranges] is true. */
-        fun serve(exchange: HttpExchange, data: ByteArray, ranges: Boolean = true, etag: String = "\"v1\"") {
-            exchange.responseHeaders.add("ETag", etag)
-            if (ranges) exchange.responseHeaders.add("Accept-Ranges", "bytes")
-            val range = exchange.requestHeaders.getFirst("Range")
-            val ifRange = exchange.requestHeaders.getFirst("If-Range")
-            val rangeApplies = ranges && range != null && (ifRange == null || ifRange == etag)
-            if (rangeApplies) {
-                val start = range!!.removePrefix("bytes=").substringBefore('-').toLong()
+        /** Serves [data], honouring "Range: bytes=N-" (and If-Range) when [ranges] is true. */
+        fun serve(exchange: Exchange, data: ByteArray, ranges: Boolean = true, etag: String = "\"v1\"") {
+            exchange.header("ETag", etag)
+            if (ranges) exchange.header("Accept-Ranges", "bytes")
+            val range = exchange.requestHeaders["range"]
+            val ifRange = exchange.requestHeaders["if-range"]
+            if (ranges && range != null && (ifRange == null || ifRange == etag)) {
+                val start = range.removePrefix("bytes=").substringBefore('-').toLong()
                 if (start >= data.size) {
-                    exchange.responseHeaders.add("Content-Range", "bytes */${data.size}")
-                    exchange.sendResponseHeaders(416, -1)
+                    exchange.header("Content-Range", "bytes */${data.size}")
+                    exchange.sendHeaders(416, -1)
                     return
                 }
                 val body = data.copyOfRange(start.toInt(), data.size)
-                exchange.responseHeaders.add("Content-Range", "bytes $start-${data.size - 1}/${data.size}")
-                exchange.sendResponseHeaders(206, body.size.toLong())
-                exchange.responseBody.write(body)
+                exchange.header("Content-Range", "bytes $start-${data.size - 1}/${data.size}")
+                exchange.sendHeaders(206, body.size.toLong())
+                exchange.write(body)
             } else {
-                exchange.sendResponseHeaders(200, data.size.toLong())
-                exchange.responseBody.write(data)
+                exchange.sendHeaders(200, data.size.toLong())
+                exchange.write(data)
             }
         }
     }

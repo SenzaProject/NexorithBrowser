@@ -2,7 +2,7 @@
 
 ## Automated (`./gradlew testDebugUnitTest`)
 
-- `DownloadEngineTest` runs the engine against a real HTTP server on localhost (JDK `HttpServer`), not mocks: full download, resume with Range and If-Range, server that ignores Range, file changed on the server, connection dropped mid-transfer, 429 with Retry-After (honoured, or fails when it is longer than 2 minutes), 404 not retried, 5xx exponential backoff, 416 on a complete file, cookies dropped on a cross-host redirect, cleartext refused, and cancellation of a stalled connection.
+- `DownloadEngineTest` runs the engine against a real HTTP server on localhost (a small socket-based server in `TestServer.kt`), not mocks: full download, resume with Range and If-Range, server that ignores Range, file changed on the server, connection dropped mid-transfer, 429 with Retry-After (honoured, or fails when it is longer than 2 minutes), 404 not retried, 5xx exponential backoff, 416 on a complete file, cookies dropped on a cross-host redirect, cleartext refused, and cancellation of a stalled connection.
 - `DownloadCenterTest`: queue limit, pause/resume/cancel/retry/remove, failure and publish errors, private downloads never stored, server file name, restart behaviour.
 - `SpeedMeterTest`, `FormattersTest`, `FileNamesTest`.
 
