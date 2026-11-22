@@ -314,6 +314,18 @@ class DownloadCenterTest {
     }
 
     @Test
+    fun loadCanResumeInterruptedDownloadsByItself() = runBlocking {
+        repo.insert(DownloadItem(id = 0, url = "https://e.com/a.zip", fileName = "a.zip", status = DownloadStatus.RUNNING, downloadedBytes = 10, createdAt = 5))
+        assertFalse(center.loaded.value)
+
+        center.load(resumeInterrupted = true)
+
+        assertTrue(center.loaded.value)
+        assertEquals(DownloadStatus.RUNNING, center.items.value.single().status)
+        assertEquals("https://e.com/a.zip", downloader.calls.single().spec.url)
+    }
+
+    @Test
     fun averageSpeedIsBytesOverTimeSpentTransferring() {
         val item = DownloadItem(id = 1, url = "u", fileName = "f", downloadedBytes = 10_000_000, activeMillis = 5_000)
         assertEquals(2_000_000L, item.averageSpeedBps)

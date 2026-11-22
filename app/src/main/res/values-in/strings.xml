@@ -118,4 +118,8 @@
     <string name="downloads_connections_hint">Dipakai hanya jika server mendukung range request. Aplikasi memakai lebih sedikit koneksi jika server membatasinya.</string>
     <string name="download_using_connections">Memakai %1$d koneksi</string>
     <string name="fail_checksum">file rusak (checksum tidak cocok)</string>
+    <string name="menu_desktop_site">Situs desktop</string>
+    <string name="notif_channel_media">Pemutaran latar belakang</string>
+    <string name="notif_media_title">Memutar di latar belakang</string>
+    <string name="notif_media_text">Nexorith Browser menjaga audio tetap berputar</string>
 </resources>

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -92,11 +93,16 @@ fun BrowserScreen(viewModel: BrowserViewModel, registry: WebViewRegistry) {
         if (webView != null && webView.canGoBack()) webView.goBack() else viewModel.closeTab(tab.id)
     }
 
+    // Apply the desktop site switch to an already created WebView (a new one is created with it).
+    LaunchedEffect(tab.id, tab.isDesktop) {
+        registry.setDesktopMode(tab.id, tab.isDesktop)
+    }
+
     // Perform a pending load once, then clear it so switching tabs never reloads.
     val request = tab.loadRequest
     LaunchedEffect(tab.id, request?.nonce) {
         if (request != null) {
-            registry.get(tab.id, tab.isPrivate).loadUrl(request.url)
+            registry.get(tab.id, tab.isPrivate, tab.isDesktop).loadUrl(request.url)
             viewModel.onLoadRequestConsumed(tab.id, request.nonce)
         }
     }
@@ -136,7 +142,7 @@ fun BrowserScreen(viewModel: BrowserViewModel, registry: WebViewRegistry) {
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = {
-                            val webView = registry.get(tab.id, tab.isPrivate)
+                            val webView = registry.get(tab.id, tab.isPrivate, tab.isDesktop)
                             // A WebView can only have one parent; detach it from a previous holder.
                             (webView.parent as? android.view.ViewGroup)?.removeView(webView)
                             webView
@@ -181,6 +187,7 @@ fun BrowserScreen(viewModel: BrowserViewModel, registry: WebViewRegistry) {
                 }
             },
             onToggleBookmark = viewModel::toggleBookmark,
+            onToggleDesktop = viewModel::toggleDesktopMode,
             onBookmarks = { viewModel.showScreen(Screen.BOOKMARKS) },
             onHistory = { viewModel.showScreen(Screen.HISTORY) },
             onDownloads = { viewModel.showScreen(Screen.DOWNLOADS) },
@@ -316,6 +323,7 @@ private fun BottomBar(
     onNewIncognitoTab: () -> Unit,
     onDownloads: () -> Unit,
     onToggleBookmark: () -> Unit,
+    onToggleDesktop: () -> Unit,
     onBookmarks: () -> Unit,
     onHistory: () -> Unit,
 ) {
@@ -414,6 +422,11 @@ private fun BottomBar(
                                 Intent.createChooser(send, context.getString(R.string.share_chooser)),
                             )
                         },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_desktop_site)) },
+                        trailingIcon = { Checkbox(checked = tab.isDesktop, onCheckedChange = null) },
+                        onClick = { menuOpen = false; onToggleDesktop() },
                     )
                     HorizontalDivider()
                     listOf(

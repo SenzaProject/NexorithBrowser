@@ -118,4 +118,8 @@
     <string name="downloads_connections_hint">Used only when the server supports range requests. The app uses fewer connections if the server limits them.</string>
     <string name="download_using_connections">Using %1$d connections</string>
     <string name="fail_checksum">file is corrupted (checksum mismatch)</string>
+    <string name="menu_desktop_site">Desktop site</string>
+    <string name="notif_channel_media">Background playback</string>
+    <string name="notif_media_title">Playing in the background</string>
+    <string name="notif_media_text">Nexorith Browser keeps the audio playing</string>
 </resources>
