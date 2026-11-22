@@ -5,8 +5,14 @@ import java.io.Closeable
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.InterruptedIOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.Callable
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.ThreadFactory
 
 interface HttpResponse : Closeable {
     val code: Int
@@ -90,17 +96,82 @@ class UrlConnectionTransport(
             if (code >= 400) connection.errorStream ?: ByteArrayInputStream(ByteArray(0)) else connection.inputStream
         }
         private val tracked: InputStream by lazy { EndTrackingStream(raw) { reachedEnd = true } }
+        private val abortable: AbortableStream by lazy { AbortableStream(tracked) }
 
-        override val body: InputStream get() = tracked
+        override val body: InputStream get() = abortable
 
         override fun header(name: String): String? = connection.getHeaderField(name)
 
-        override fun abort() = connection.disconnect()
+        override fun abort() {
+            // HttpURLConnection.disconnect() can wait for a read that is blocked on the same
+            // stream, so the blocked reader is released first and the disconnect runs elsewhere.
+            runCatching { abortable.abort() }
+            disconnectInBackground()
+        }
 
         override fun close() {
             // Closing a fully read stream keeps the connection reusable; disconnect() would not.
-            if (reachedEnd) runCatching { raw.close() } else connection.disconnect()
+            if (reachedEnd) {
+                runCatching { raw.close() }
+            } else {
+                runCatching { abortable.abort() }
+                disconnectInBackground()
+            }
         }
+
+        private fun disconnectInBackground() {
+            READERS.execute { runCatching { connection.disconnect() } }
+        }
+    }
+
+    /**
+     * Runs each read on a helper thread so that [abort] can release the caller at once, even when
+     * the underlying socket read does not react to disconnect() (the JDK's implementation).
+     */
+    private class AbortableStream(private val delegate: InputStream) : InputStream() {
+        @Volatile
+        private var aborted = false
+
+        @Volatile
+        private var pending: CompletableFuture<Int>? = null
+
+        fun abort() {
+            aborted = true
+            pending?.completeExceptionally(IOException("Aborted"))
+        }
+
+        override fun read(): Int {
+            val one = ByteArray(1)
+            val n = read(one, 0, 1)
+            return if (n < 0) -1 else one[0].toInt() and 0xFF
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            if (aborted) throw IOException("Aborted")
+            val future = CompletableFuture<Int>()
+            pending = future
+            READERS.execute {
+                try {
+                    future.complete(delegate.read(b, off, len))
+                } catch (t: Throwable) {
+                    future.completeExceptionally(t)
+                }
+            }
+            if (aborted) future.completeExceptionally(IOException("Aborted"))
+            try {
+                return future.get()
+            } catch (e: ExecutionException) {
+                throw (e.cause as? IOException) ?: IOException(e.cause)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw InterruptedIOException("Interrupted while reading")
+            } finally {
+                pending = null
+            }
+        }
+
+        // The connection is closed through the response, which never blocks.
+        override fun close() = Unit
     }
 
     private class EndTrackingStream(delegate: InputStream, private val onEnd: () -> Unit) : FilterInputStream(delegate) {
@@ -119,5 +190,9 @@ class UrlConnectionTransport(
 
     private companion object {
         const val MAX_REDIRECTS = 5
+
+        val READERS = Executors.newCachedThreadPool(
+            ThreadFactory { task -> Thread(task, "nexorith-http-read").apply { isDaemon = true } },
+        )
     }
 }
