@@ -1,6 +1,9 @@
 package com.nexorith.browser.downloads
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -11,6 +14,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -33,6 +37,9 @@ class DownloadEngine(
     private val bufferSize: Int = 64 * 1024,
     private val progressIntervalMs: Long = 250,
 ) : Downloader {
+
+    // Reads run here so that cancelling the download does not wait for a blocked read().
+    private val readerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override suspend fun download(
         spec: DownloadSpec,
@@ -60,9 +67,6 @@ class DownloadEngine(
         checkNotNull(result)
     }
 
-    private fun backoffMillis(failures: Int): Long =
-        minOf(1_000L shl (failures - 1).coerceIn(0, 10), MAX_BACKOFF_MS)
-
     private class AttemptState(var validator: String?, var activeMs: Long)
 
     private sealed interface Attempt {
@@ -74,8 +78,6 @@ class DownloadEngine(
             val retryAfterMs: Long? = null,
         ) : Attempt
     }
-
-    private data class ContentRange(val start: Long, val total: Long)
 
     private suspend fun attempt(
         spec: DownloadSpec,
@@ -105,16 +107,18 @@ class DownloadEngine(
         return coroutineScope {
             // A blocked read cannot be interrupted by cancellation. This child is cancelled with its
             // parent and then closes the connection, which makes the read fail at once.
+            val finished = AtomicBoolean(false)
             val watcher = launch {
                 try {
                     awaitCancellation()
                 } finally {
-                    runCatching { response.close() }
+                    if (!finished.get()) runCatching { response.abort() }
                 }
             }
             try {
                 handle(response, spec, file, existing, state, onProgress)
             } finally {
+                finished.set(true)
                 watcher.cancel()
                 runCatching { response.close() }
             }
@@ -177,7 +181,7 @@ class DownloadEngine(
         }
 
         val free = file.absoluteFile.parentFile?.usableSpace ?: Long.MAX_VALUE
-        if (total >= 0 && free < (total - start) + SPACE_MARGIN) {
+        if (total >= 0 && free < (total - start) + SPACE_MARGIN_BYTES) {
             return Attempt.Fatal(DownloadFailure(FailureKind.STORAGE))
         }
 
@@ -219,7 +223,7 @@ class DownloadEngine(
                 val input = response.body
                 while (true) {
                     val n = try {
-                        input.read(buffer)
+                        readerScope.async { input.read(buffer) }.await()
                     } catch (e: IOException) {
                         coroutineContext.ensureActive()
                         return Attempt.Retry(DownloadFailure(FailureKind.NETWORK), receivedAny)
@@ -259,19 +263,4 @@ class DownloadEngine(
         runCatching { RandomAccessFile(file, "rw").use { it.setLength(0) } }
     }
 
-    private fun parseContentRange(value: String?): ContentRange? {
-        if (value == null) return null
-        // "bytes 100-999/1000", "bytes 100-999/*", "bytes */1000"
-        val match = CONTENT_RANGE.matchEntire(value.trim()) ?: return null
-        val start = match.groupValues[1].toLongOrNull() ?: -1L
-        val total = match.groupValues[2].toLongOrNull() ?: -1L
-        return ContentRange(start, total)
-    }
-
-    private companion object {
-        const val MAX_BACKOFF_MS = 30_000L
-        const val MAX_RETRY_AFTER_MS = 120_000L
-        const val SPACE_MARGIN = 8L * 1024 * 1024
-        val CONTENT_RANGE = Regex("bytes\\s+(?:(\\d+)-\\d+|\\*)/(\\d+|\\*)", RegexOption.IGNORE_CASE)
-    }
 }
