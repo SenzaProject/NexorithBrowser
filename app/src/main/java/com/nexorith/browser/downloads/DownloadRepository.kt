@@ -43,6 +43,7 @@ class SqliteDownloadRepository(private val database: NexorithDatabase) : Downloa
         put("downloaded_bytes", item.downloadedBytes)
         if (item.acceptsRanges == null) putNull("accepts_ranges") else put("accepts_ranges", if (item.acceptsRanges) 1 else 0)
         put("validator", item.validator)
+        put("segment_state", item.segmentState)
         put("saved_uri", item.savedUri)
         put("active_ms", item.activeMillis)
         put("created_at", item.createdAt)
@@ -69,6 +70,7 @@ class SqliteDownloadRepository(private val database: NexorithDatabase) : Downloa
             failure = kind?.let { DownloadFailure(it, long("failure_code").toInt()) },
             acceptsRanges = if (c.isNull(rangesIndex)) null else c.getInt(rangesIndex) == 1,
             validator = string("validator"),
+            segmentState = string("segment_state"),
             savedUri = string("saved_uri"),
             activeMillis = long("active_ms"),
             createdAt = long("created_at"),

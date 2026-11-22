@@ -30,6 +30,7 @@ class DownloadCenterTest {
     private lateinit var scope: CoroutineScope
     private lateinit var center: DownloadCenter
     private var now = 1_000L
+    private var connectionSetting = 4
 
     @Before
     fun setUp() {
@@ -45,6 +46,7 @@ class DownloadCenterTest {
             clock = { now++ },
             maxParallel = 2,
             ioDispatcher = Dispatchers.Unconfined,
+            connections = { connectionSetting },
         )
     }
 
@@ -65,9 +67,16 @@ class DownloadCenterTest {
 
     private fun item(id: Long) = center.find(id)!!
 
-    private fun progress(downloaded: Long, total: Long = -1, name: String? = null) = DownloadProgress(
+    private fun progress(
+        downloaded: Long,
+        total: Long = -1,
+        name: String? = null,
+        segmentState: String? = null,
+        connections: Int = 1,
+    ) = DownloadProgress(
         downloadedBytes = downloaded, totalBytes = total, speedBps = 2048, etaSeconds = 10,
         acceptsRanges = true, validator = "\"v1\"", suggestedName = name, mimeType = null, activeMillis = 500,
+        segmentState = segmentState, connections = connections, segmented = segmentState != null,
     )
 
     @Test
@@ -309,5 +318,90 @@ class DownloadCenterTest {
         val item = DownloadItem(id = 1, url = "u", fileName = "f", downloadedBytes = 10_000_000, activeMillis = 5_000)
         assertEquals(2_000_000L, item.averageSpeedBps)
         assertEquals(0L, item.copy(activeMillis = 0).averageSpeedBps)
+    }
+
+    // ---- multi-connection downloads ----
+
+    @Test
+    fun theConnectionSettingAndTheSavedChunkMapReachTheDownloader() {
+        connectionSetting = 6
+        val id = enqueue(request()).single()
+        assertEquals(6, downloader.calls.single().spec.maxConnections)
+        assertNull(downloader.calls.single().spec.segmentState)
+
+        downloader.calls.single().onProgress(progress(downloaded = 100, total = 1_000, segmentState = "1|1000|100|0", connections = 3))
+        assertEquals(3, item(id).connections)
+        assertTrue(item(id).segmented)
+
+        center.pause(id)
+        connectionSetting = 99 // never above eight
+        center.resume(id)
+        val second = downloader.calls[1].spec
+        assertEquals(8, second.maxConnections)
+        assertEquals("1|1000|100|0", second.segmentState)
+    }
+
+    @Test
+    fun pausingAMultiConnectionDownloadKeepsItsProgressNotTheFileLength() {
+        val id = enqueue(request()).single()
+        val call = downloader.calls.single()
+        call.file.writeBytes(ByteArray(1_000)) // preallocated: as long as the whole file
+        call.onProgress(progress(downloaded = 300, total = 1_000, segmentState = "1|1000|100|0-2"))
+
+        center.pause(id)
+        assertEquals(DownloadStatus.PAUSED, item(id).status)
+        assertEquals(300L, item(id).downloadedBytes)
+
+        // The transfer reports once more while it is being stopped; speed stays zero.
+        call.onProgress(progress(downloaded = 450, total = 1_000, segmentState = "1|1000|100|0-3,4:50"))
+        assertEquals(450L, item(id).downloadedBytes)
+        assertEquals("1|1000|100|0-3,4:50", item(id).segmentState)
+        assertEquals(0L, item(id).speedBps)
+    }
+
+    @Test
+    fun aFailedMultiConnectionDownloadKeepsItsProgressAndChunkMap() {
+        val id = enqueue(request()).single()
+        val call = downloader.calls.single()
+        call.file.writeBytes(ByteArray(1_000))
+        call.onProgress(progress(downloaded = 700, total = 1_000, segmentState = "1|1000|100|0-6"))
+        call.gate.complete(DownloadResult.Failed(DownloadFailure(FailureKind.NETWORK)))
+
+        assertEquals(DownloadStatus.FAILED, item(id).status)
+        assertEquals(700L, item(id).downloadedBytes)
+        assertEquals("1|1000|100|0-6", item(id).segmentState)
+    }
+
+    @Test
+    fun aChecksumFailureForgetsTheChunkMapAndProgress() {
+        val id = enqueue(request()).single()
+        val call = downloader.calls.single()
+        call.onProgress(progress(downloaded = 1_000, total = 1_000, segmentState = "1|1000|100|0-9"))
+        call.gate.complete(DownloadResult.Failed(DownloadFailure(FailureKind.CHECKSUM)))
+
+        assertEquals(DownloadStatus.FAILED, item(id).status)
+        assertEquals(FailureKind.CHECKSUM, item(id).failure?.kind)
+        assertEquals(0L, item(id).downloadedBytes)
+        assertNull(item(id).segmentState)
+        assertNull(item(id).validator)
+    }
+
+    @Test
+    fun cancelAndCompletionForgetTheChunkMap() {
+        val first = enqueue(request("https://e.com/1.zip")).single()
+        downloader.calls[0].onProgress(progress(downloaded = 10, total = 100, segmentState = "1|100|10|0"))
+        center.cancel(first)
+        assertNull(item(first).segmentState)
+        assertEquals(0L, item(first).downloadedBytes)
+
+        val second = enqueue(request("https://e.com/2.zip")).last()
+        val call = downloader.calls[1]
+        call.file.writeBytes(ByteArray(100))
+        call.onProgress(progress(downloaded = 100, total = 100, segmentState = "1|100|10|0-9"))
+        call.gate.complete(DownloadResult.Completed(100))
+        assertEquals(DownloadStatus.COMPLETED, item(second).status)
+        assertNull(item(second).segmentState)
+        assertEquals(0, item(second).connections)
+        assertFalse(item(second).segmented)
     }
 }

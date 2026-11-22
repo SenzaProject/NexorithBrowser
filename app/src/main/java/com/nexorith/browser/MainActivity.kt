@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val downloadsViewModel: DownloadsViewModel by viewModels {
-        DownloadsViewModel.factory(container.downloadCenter)
+        DownloadsViewModel.factory(container.downloadCenter, container.downloadSettings)
     }
 
     private var pendingPermission by mutableStateOf<SitePermissionRequest?>(null)

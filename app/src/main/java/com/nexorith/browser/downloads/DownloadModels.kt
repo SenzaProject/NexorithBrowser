@@ -2,7 +2,7 @@ package com.nexorith.browser.downloads
 
 enum class DownloadStatus { QUEUED, RUNNING, PAUSED, COMPLETED, FAILED, CANCELED }
 
-enum class FailureKind { NETWORK, HTTP, RATE_LIMITED, STORAGE, UNSUPPORTED_URL }
+enum class FailureKind { NETWORK, HTTP, RATE_LIMITED, STORAGE, UNSUPPORTED_URL, CHECKSUM }
 
 data class DownloadFailure(val kind: FailureKind, val httpCode: Int = 0)
 
@@ -37,6 +37,12 @@ data class DownloadItem(
     val acceptsRanges: Boolean? = null,
     /** ETag or Last-Modified of the file, sent as If-Range when resuming. */
     val validator: String? = null,
+    /** Which chunks of a multi-connection download are done ([SegmentMap.encode]); null for single-connection downloads. */
+    val segmentState: String? = null,
+    /** Connections in use right now (0 when not running). Not saved. */
+    val connections: Int = 0,
+    /** True while the download uses several connections. Not saved. */
+    val segmented: Boolean = false,
     val savedUri: String? = null,
     /** Total time spent transferring, across pauses and retries. */
     val activeMillis: Long = 0,
@@ -68,6 +74,10 @@ data class DownloadSpec(
     val cookies: String?,
     val validator: String?,
     val activeMillisBefore: Long,
+    /** Upper bound for parallel connections; 1 forces a single connection. */
+    val maxConnections: Int = 1,
+    /** Saved [SegmentMap] of an earlier run of this download, if any. */
+    val segmentState: String? = null,
 )
 
 data class DownloadProgress(
@@ -81,6 +91,10 @@ data class DownloadProgress(
     val suggestedName: String?,
     val mimeType: String?,
     val activeMillis: Long,
+    /** Current [SegmentMap] for multi-connection downloads, null otherwise. */
+    val segmentState: String? = null,
+    val connections: Int = 1,
+    val segmented: Boolean = false,
 )
 
 sealed interface DownloadResult {

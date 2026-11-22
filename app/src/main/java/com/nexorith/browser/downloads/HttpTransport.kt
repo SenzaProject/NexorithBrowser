@@ -2,6 +2,7 @@ package com.nexorith.browser.downloads
 
 import java.io.ByteArrayInputStream
 import java.io.Closeable
+import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
@@ -11,6 +12,15 @@ interface HttpResponse : Closeable {
     val code: Int
     val body: InputStream
     fun header(name: String): String?
+
+    /** Stops the transfer at once, even while another thread is blocked reading [body]. */
+    fun abort()
+
+    /**
+     * Releases the response. When the body was read to its end the connection goes back to the
+     * pool and is reused by the next request; otherwise it is closed.
+     */
+    override fun close()
 }
 
 interface HttpTransport {
@@ -73,16 +83,38 @@ class UrlConnectionTransport(
         private val connection: HttpURLConnection,
         override val code: Int,
     ) : HttpResponse {
-        override val body: InputStream
-            get() = if (code >= 400) {
-                connection.errorStream ?: ByteArrayInputStream(ByteArray(0))
-            } else {
-                connection.inputStream
-            }
+        @Volatile
+        private var reachedEnd = false
+
+        private val raw: InputStream by lazy {
+            if (code >= 400) connection.errorStream ?: ByteArrayInputStream(ByteArray(0)) else connection.inputStream
+        }
+        private val tracked: InputStream by lazy { EndTrackingStream(raw) { reachedEnd = true } }
+
+        override val body: InputStream get() = tracked
 
         override fun header(name: String): String? = connection.getHeaderField(name)
 
-        override fun close() = connection.disconnect()
+        override fun abort() = connection.disconnect()
+
+        override fun close() {
+            // Closing a fully read stream keeps the connection reusable; disconnect() would not.
+            if (reachedEnd) runCatching { raw.close() } else connection.disconnect()
+        }
+    }
+
+    private class EndTrackingStream(delegate: InputStream, private val onEnd: () -> Unit) : FilterInputStream(delegate) {
+        override fun read(): Int {
+            val b = super.read()
+            if (b < 0) onEnd()
+            return b
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            val n = super.read(b, off, len)
+            if (n < 0) onEnd()
+            return n
+        }
     }
 
     private companion object {

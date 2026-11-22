@@ -1,9 +1,6 @@
 package com.nexorith.browser.downloads
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -37,9 +34,6 @@ class DownloadEngine(
     private val bufferSize: Int = 64 * 1024,
     private val progressIntervalMs: Long = 250,
 ) : Downloader {
-
-    // Reads run here so that cancelling the download does not wait for a blocked read().
-    private val readerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override suspend fun download(
         spec: DownloadSpec,
@@ -223,7 +217,7 @@ class DownloadEngine(
                 val input = response.body
                 while (true) {
                     val n = try {
-                        readerScope.async { input.read(buffer) }.await()
+                        input.read(buffer)
                     } catch (e: IOException) {
                         coroutineContext.ensureActive()
                         return Attempt.Retry(DownloadFailure(FailureKind.NETWORK), receivedAny)

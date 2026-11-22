@@ -12,10 +12,12 @@ import com.nexorith.browser.data.BuildAppInfoRepository
 import com.nexorith.browser.data.NexorithDatabase
 import com.nexorith.browser.history.HistoryRepository
 import com.nexorith.browser.history.SqliteHistoryRepository
+import com.nexorith.browser.downloads.AcceleratedDownloader
 import com.nexorith.browser.downloads.AndroidDownloadStorage
 import com.nexorith.browser.downloads.DownloadCenter
 import com.nexorith.browser.downloads.DownloadEngine
 import com.nexorith.browser.downloads.DownloadService
+import com.nexorith.browser.downloads.SharedPreferencesDownloadSettings
 import com.nexorith.browser.downloads.SqliteDownloadRepository
 import com.nexorith.browser.downloads.UrlConnectionTransport
 import com.nexorith.browser.incognito.PrivateSession
@@ -51,11 +53,17 @@ class AppContainer(context: Context) {
     /** Lifetime of private browsing data (separate WebView profile, deleted when private tabs close). */
     val privateSession = PrivateSession(WebKitPrivateProfiles())
 
+    val downloadSettings = SharedPreferencesDownloadSettings(appContext)
+
+    private val httpTransport = UrlConnectionTransport()
+
     val downloadCenter = DownloadCenter(
         repository = SqliteDownloadRepository(database),
-        downloader = DownloadEngine(UrlConnectionTransport()),
+        // Several connections when the server supports ranges, one plain connection otherwise.
+        downloader = AcceleratedDownloader(httpTransport, single = DownloadEngine(httpTransport)),
         storage = AndroidDownloadStorage(appContext),
         scope = appScope,
+        connections = { downloadSettings.maxConnections.value },
     )
 
     init {

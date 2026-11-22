@@ -95,7 +95,7 @@
     <string name="fail_rate">terlalu banyak permintaan, coba lagi nanti</string>
     <string name="fail_storage">tidak dapat menyimpan file (penyimpanan penuh?)</string>
     <string name="fail_unsupported">tautan tidak didukung</string>
-    <string name="download_no_resume">Server ini tidak menyatakan dukungan lanjutkan. Menjeda dapat mengulang unduhan dari awal.</string>
+    <string name="download_no_resume">Server ini tidak mendukung range request: mode multi-koneksi tidak tersedia, dan menjeda dapat mengulang unduhan dari awal.</string>
     <string name="download_pause">Jeda</string>
     <string name="download_resume">Lanjutkan</string>
     <string name="download_cancel">Batal</string>
@@ -114,4 +114,8 @@
     <string name="notif_pause_all">Jeda semua</string>
     <string name="notif_failed">Unduhan gagal</string>
     <string name="notif_complete">Unduhan selesai</string>
+    <string name="downloads_connections">Koneksi per unduhan</string>
+    <string name="downloads_connections_hint">Dipakai hanya jika server mendukung range request. Aplikasi memakai lebih sedikit koneksi jika server membatasinya.</string>
+    <string name="download_using_connections">Memakai %1$d koneksi</string>
+    <string name="fail_checksum">file rusak (checksum tidak cocok)</string>
 </resources>

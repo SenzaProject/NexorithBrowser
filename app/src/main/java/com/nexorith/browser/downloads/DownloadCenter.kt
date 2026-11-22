@@ -34,6 +34,8 @@ class DownloadCenter(
     private val clock: () -> Long = System::currentTimeMillis,
     private val maxParallel: Int = 3,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Connections per download the user allows (1 to 8). Read each time a download starts. */
+    private val connections: () -> Int = { 1 },
 ) {
     private val lock = Any()
     private val jobs = HashMap<Long, Job>()
@@ -96,7 +98,7 @@ class DownloadCenter(
         synchronized(lock) {
             val item = find(id) ?: return
             if (!item.isActive) return
-            update(id) { it.copy(status = DownloadStatus.PAUSED, speedBps = 0, etaSeconds = null) }
+            update(id) { it.copy(status = DownloadStatus.PAUSED, speedBps = 0, etaSeconds = null, connections = 0) }
             job = jobs[id]
         }
         if (job != null) job?.cancel() else persistAsync(id)
@@ -112,7 +114,12 @@ class DownloadCenter(
         synchronized(lock) {
             val item = find(id) ?: return
             if (item.isFinished) return
-            update(id) { it.copy(status = DownloadStatus.CANCELED, speedBps = 0, etaSeconds = null, downloadedBytes = 0) }
+            update(id) {
+                it.copy(
+                    status = DownloadStatus.CANCELED, speedBps = 0, etaSeconds = null,
+                    downloadedBytes = 0, segmentState = null, connections = 0, segmented = false,
+                )
+            }
             job = jobs[id]
         }
         if (job != null) {
@@ -191,7 +198,7 @@ class DownloadCenter(
     }
 
     private fun start(item: DownloadItem) {
-        update(item.id) { it.copy(status = DownloadStatus.RUNNING, failure = null, speedBps = 0, etaSeconds = null) }
+        update(item.id) { it.copy(status = DownloadStatus.RUNNING, failure = null, speedBps = 0, etaSeconds = null, connections = 0) }
         val job = scope.launch(ioDispatcher) { execute(item.id) }
         jobs[item.id] = job
         job.invokeOnCompletion {
@@ -211,6 +218,8 @@ class DownloadCenter(
             cookies = synchronized(lock) { cookies[id] },
             validator = item.validator,
             activeMillisBefore = item.activeMillis,
+            maxConnections = connections().coerceIn(1, 8),
+            segmentState = item.segmentState,
         )
         try {
             when (val result = downloader.download(spec, part) { progress -> onProgress(id, progress) }) {
@@ -228,10 +237,8 @@ class DownloadCenter(
             synchronized(lock) { if (nameLocked.add(id)) FileNames.fromServerName(name, p.mimeType) else null }
         }
         update(id) { i ->
-            if (i.status != DownloadStatus.RUNNING) {
-                i
-            } else {
-                i.copy(
+            when (i.status) {
+                DownloadStatus.RUNNING -> i.copy(
                     downloadedBytes = p.downloadedBytes,
                     totalBytes = if (p.totalBytes >= 0) p.totalBytes else i.totalBytes,
                     speedBps = p.speedBps,
@@ -241,7 +248,18 @@ class DownloadCenter(
                     activeMillis = p.activeMillis,
                     fileName = rename ?: i.fileName,
                     mimeType = if (i.mimeType.isNullOrBlank() || i.mimeType == OCTET_STREAM) p.mimeType ?: i.mimeType else i.mimeType,
+                    segmentState = p.segmentState,
+                    connections = p.connections,
+                    segmented = p.segmented,
                 )
+                // A paused download still receives the last progress of the transfer that was
+                // stopped: it carries the chunk map that resuming needs. Speed stays zero.
+                DownloadStatus.PAUSED -> if (p.segmented) {
+                    i.copy(downloadedBytes = p.downloadedBytes, segmentState = p.segmentState, activeMillis = p.activeMillis)
+                } else {
+                    i
+                }
+                else -> i
             }
         }
         val now = clock()
@@ -281,6 +299,9 @@ class DownloadCenter(
                 speedBps = 0,
                 etaSeconds = null,
                 failure = null,
+                segmentState = null,
+                connections = 0,
+                segmented = false,
             )
         }
         persist(id)
@@ -292,12 +313,22 @@ class DownloadCenter(
             if (it.status != DownloadStatus.RUNNING) {
                 it
             } else {
+                val corrupt = failure.kind == FailureKind.CHECKSUM
                 it.copy(
                     status = DownloadStatus.FAILED,
                     failure = failure,
-                    downloadedBytes = if (part.exists()) part.length() else 0,
+                    // A multi-connection file is preallocated: its length is not the progress.
+                    downloadedBytes = when {
+                        corrupt || !part.exists() -> 0
+                        it.segmentState != null -> it.downloadedBytes
+                        else -> part.length()
+                    },
+                    segmentState = if (corrupt) null else it.segmentState,
+                    validator = if (corrupt) null else it.validator,
                     speedBps = 0,
                     etaSeconds = null,
+                    connections = 0,
+                    segmented = false,
                 )
             }
         }
@@ -314,7 +345,10 @@ class DownloadCenter(
                 persist(id)
             }
             else -> {
-                update(id) { it.copy(downloadedBytes = if (part.exists()) part.length() else 0) }
+                update(id) {
+                    // A multi-connection file is preallocated: keep the progress reported by the transfer.
+                    it.copy(downloadedBytes = if (it.segmentState != null) it.downloadedBytes else if (part.exists()) part.length() else 0)
+                }
                 persist(id)
             }
         }

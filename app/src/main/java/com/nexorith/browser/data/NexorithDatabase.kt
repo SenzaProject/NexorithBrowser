@@ -40,6 +40,7 @@ class NexorithDatabase(context: Context) :
                 "downloaded_bytes INTEGER NOT NULL, " +
                 "accepts_ranges INTEGER, " +
                 "validator TEXT, " +
+                "segment_state TEXT, " +
                 "saved_uri TEXT, " +
                 "active_ms INTEGER NOT NULL, " +
                 "created_at INTEGER NOT NULL, " +
@@ -51,10 +52,14 @@ class NexorithDatabase(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion < 2) createDownloads(db)
+        if (oldVersion < 2) {
+            createDownloads(db) // already has every column of version 3
+        } else if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE downloads ADD COLUMN segment_state TEXT")
+        }
     }
 
     private companion object {
-        const val VERSION = 2
+        const val VERSION = 3
     }
 }

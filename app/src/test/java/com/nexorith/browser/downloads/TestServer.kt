@@ -123,21 +123,30 @@ class TestServer(private val handler: (Exchange) -> Unit) : Closeable {
     }
 
     companion object {
-        /** Serves [data], honouring "Range: bytes=N-" (and If-Range) when [ranges] is true. */
-        fun serve(exchange: Exchange, data: ByteArray, ranges: Boolean = true, etag: String = "\"v1\"") {
+        /** Serves [data], honouring "Range: bytes=N-M" or "bytes=N-" (and If-Range) when [ranges] is true. */
+        fun serve(
+            exchange: Exchange,
+            data: ByteArray,
+            ranges: Boolean = true,
+            etag: String = "\"v1\"",
+            extraHeaders: Map<String, String> = emptyMap(),
+        ) {
             exchange.header("ETag", etag)
+            extraHeaders.forEach { (name, value) -> exchange.header(name, value) }
             if (ranges) exchange.header("Accept-Ranges", "bytes")
             val range = exchange.requestHeaders["range"]
             val ifRange = exchange.requestHeaders["if-range"]
             if (ranges && range != null && (ifRange == null || ifRange == etag)) {
-                val start = range.removePrefix("bytes=").substringBefore('-').toLong()
+                val spec = range.removePrefix("bytes=")
+                val start = spec.substringBefore('-').toLong()
+                val last = spec.substringAfter('-').toLongOrNull()?.coerceAtMost(data.size - 1L) ?: (data.size - 1L)
                 if (start >= data.size) {
                     exchange.header("Content-Range", "bytes */${data.size}")
                     exchange.sendHeaders(416, -1)
                     return
                 }
-                val body = data.copyOfRange(start.toInt(), data.size)
-                exchange.header("Content-Range", "bytes $start-${data.size - 1}/${data.size}")
+                val body = data.copyOfRange(start.toInt(), last.toInt() + 1)
+                exchange.header("Content-Range", "bytes $start-$last/${data.size}")
                 exchange.sendHeaders(206, body.size.toLong())
                 exchange.write(body)
             } else {

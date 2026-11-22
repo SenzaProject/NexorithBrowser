@@ -95,7 +95,7 @@
     <string name="fail_rate">too many requests, try again later</string>
     <string name="fail_storage">could not save the file (storage full?)</string>
     <string name="fail_unsupported">unsupported link</string>
-    <string name="download_no_resume">This server does not advertise resume support. Pausing may restart the download.</string>
+    <string name="download_no_resume">This server does not support range requests: multi-connection mode is not available, and pausing may restart the download.</string>
     <string name="download_pause">Pause</string>
     <string name="download_resume">Resume</string>
     <string name="download_cancel">Cancel</string>
@@ -114,4 +114,8 @@
     <string name="notif_pause_all">Pause all</string>
     <string name="notif_failed">Download failed</string>
     <string name="notif_complete">Download complete</string>
+    <string name="downloads_connections">Connections per download</string>
+    <string name="downloads_connections_hint">Used only when the server supports range requests. The app uses fewer connections if the server limits them.</string>
+    <string name="download_using_connections">Using %1$d connections</string>
+    <string name="fail_checksum">file is corrupted (checksum mismatch)</string>
 </resources>

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nexorith.browser.R
+import com.nexorith.browser.downloads.ConnectionLimits
 import com.nexorith.browser.downloads.DownloadFailure
 import com.nexorith.browser.downloads.DownloadItem
 import com.nexorith.browser.downloads.DownloadStatus
@@ -50,6 +52,7 @@ import com.nexorith.browser.ui.components.ScreenHeader
 @Composable
 fun DownloadsScreen(viewModel: DownloadsViewModel, onBack: () -> Unit) {
     val list by viewModel.items.collectAsStateWithLifecycle()
+    val connections by viewModel.maxConnections.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -68,6 +71,7 @@ fun DownloadsScreen(viewModel: DownloadsViewModel, onBack: () -> Unit) {
                 }
             },
         )
+        ConnectionsSetting(connections, viewModel::setMaxConnections)
         if (list.isEmpty()) {
             EmptyState(stringResource(R.string.downloads_empty))
         } else {
@@ -79,6 +83,34 @@ fun DownloadsScreen(viewModel: DownloadsViewModel, onBack: () -> Unit) {
                 items(list, key = { it.id }) { item -> DownloadRow(item, viewModel) }
             }
         }
+    }
+}
+
+@Composable
+private fun ConnectionsSetting(selected: Int, onSelect: (Int) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp)) {
+        Text(
+            text = stringResource(R.string.downloads_connections),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Row(
+            modifier = Modifier.padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ConnectionLimits.CHOICES.forEach { count ->
+                FilterChip(
+                    selected = count == selected,
+                    onClick = { onSelect(count) },
+                    label = { Text(count.toString()) },
+                )
+            }
+        }
+        Text(
+            text = stringResource(R.string.downloads_connections_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 
@@ -128,6 +160,14 @@ private fun DownloadRow(item: DownloadItem, viewModel: DownloadsViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),
                 )
+                if (item.status == DownloadStatus.RUNNING && item.segmented) {
+                    Text(
+                        text = stringResource(R.string.download_using_connections, item.connections),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
                 if (item.acceptsRanges == false && !item.isFinished) {
                     Text(
                         text = stringResource(R.string.download_no_resume),
@@ -205,6 +245,7 @@ private fun failureText(failure: DownloadFailure?): String {
     FailureKind.RATE_LIMITED -> stringResource(R.string.fail_rate)
     FailureKind.STORAGE -> stringResource(R.string.fail_storage)
     FailureKind.UNSUPPORTED_URL -> stringResource(R.string.fail_unsupported)
+    FailureKind.CHECKSUM -> stringResource(R.string.fail_checksum)
     }
 }
 
