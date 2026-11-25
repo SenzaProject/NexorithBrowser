@@ -67,8 +67,7 @@ class AppContainer(context: Context) {
     )
 
     init {
-        // Downloads cut short by the system killing the app continue by themselves.
-        appScope.launch { downloadCenter.load(resumeInterrupted = true) }
+        appScope.launch { downloadCenter.load() }
         // Keep a foreground service running while any download is queued or running.
         appScope.launch(Dispatchers.Main) {
             downloadCenter.items

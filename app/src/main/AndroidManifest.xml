@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Only what the current code needs. Further permissions are added with the feature that uses them. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -9,15 +8,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Keeps the CPU awake while downloading with the screen off. -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- Lets the user exempt the app from battery saving so background downloads are not stopped. -->
-    <uses-permission
-        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
-        tools:ignore="BatteryLife" />
-
-    <!-- Audio keeps playing when the browser is in the background. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <!-- Requested at runtime only when a website asks for them, after the user agrees. -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -54,14 +44,7 @@
         <service
             android:name=".downloads.DownloadService"
             android:exported="false"
-            android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
-
-        <service
-            android:name=".media.MediaPlaybackService"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="mediaPlayback" />
     </application>
 
 </manifest>

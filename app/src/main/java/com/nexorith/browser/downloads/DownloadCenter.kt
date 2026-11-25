@@ -49,28 +49,13 @@ class DownloadCenter(
     /** Newest first. */
     val items: StateFlow<List<DownloadItem>> = _items.asStateFlow()
 
-    private val _loaded = MutableStateFlow(false)
-
-    /** True once the saved downloads have been read, so "nothing is active" can be trusted. */
-    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
-
-    /**
-     * Reads saved downloads. Call once at start.
-     *
-     * Downloads that were running or queued when the process died come back as PAUSED, or as
-     * QUEUED (and are started again) when [resumeInterrupted] is true.
-     */
-    suspend fun load(resumeInterrupted: Boolean = false) = withContext(ioDispatcher) {
+    /** Reads saved downloads. Call once at start. */
+    suspend fun load() = withContext(ioDispatcher) {
         val saved = repository.all().map { item ->
             if (item.isActive) {
-                val restored = item.copy(
-                    status = if (resumeInterrupted) DownloadStatus.QUEUED else DownloadStatus.PAUSED,
-                    speedBps = 0,
-                    etaSeconds = null,
-                    connections = 0,
-                )
-                repository.update(restored)
-                restored
+                val paused = item.copy(status = DownloadStatus.PAUSED, speedBps = 0, etaSeconds = null)
+                repository.update(paused)
+                paused
             } else {
                 item
             }
@@ -80,8 +65,6 @@ class DownloadCenter(
             (current + saved.filter { it.id !in known }).sortedByDescending { it.createdAt }
         }
         storage.retainParts(_items.value.map { it.id }.toSet())
-        _loaded.value = true
-        if (resumeInterrupted) schedule()
     }
 
     /** Adds a download and starts it when a slot is free. Returns false for links that are not http(s). */

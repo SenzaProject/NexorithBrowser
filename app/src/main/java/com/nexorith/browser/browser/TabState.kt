@@ -19,8 +19,6 @@ data class TabState(
     val error: PageError? = null,
     /** Incognito tab: no history is saved and its web data lives in the private profile. */
     val isPrivate: Boolean = false,
-    /** Desktop site: the page gets a desktop browser identity and a desktop-width layout. */
-    val isDesktop: Boolean = false,
 ) {
     val isHome: Boolean get() = url == null && error == null
 }

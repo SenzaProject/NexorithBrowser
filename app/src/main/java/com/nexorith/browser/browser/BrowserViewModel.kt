@@ -99,10 +99,6 @@ class BrowserViewModel(
         }
     }
 
-    fun toggleDesktopMode() {
-        updateTab(_uiState.value.activeTabId) { it.copy(isDesktop = !it.isDesktop) }
-    }
-
     fun onLoadRequestConsumed(tabId: Long, nonce: Long) {
         updateTab(tabId) { if (it.loadRequest?.nonce == nonce) it.copy(loadRequest = null) else it }
     }

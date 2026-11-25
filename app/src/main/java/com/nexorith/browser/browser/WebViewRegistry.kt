@@ -37,48 +37,11 @@ class WebViewRegistry(
 ) {
     private val views = LinkedHashMap<Long, WebView>()
     private val privateTabIds = HashSet<Long>()
-    private val desktopTabIds = HashSet<Long>()
-    private var mediaKeepAlive = false
 
     fun peek(tabId: Long): WebView? = views[tabId]
 
-    fun get(tabId: Long, isPrivate: Boolean, isDesktop: Boolean = false): WebView =
-        views[tabId] ?: create(tabId, isPrivate, isDesktop).also { views[tabId] = it }
-
-    /** Switches a tab between the mobile and the desktop site and reloads it when that changed. */
-    fun setDesktopMode(tabId: Long, enabled: Boolean) {
-        val view = views[tabId] ?: return
-        if (applyDesktopMode(tabId, view, enabled)) view.reload()
-    }
-
-    private fun applyDesktopMode(tabId: Long, view: WebView, enabled: Boolean): Boolean {
-        if ((tabId in desktopTabIds) == enabled) return false
-        if (enabled) desktopTabIds += tabId else desktopTabIds -= tabId
-        with(view.settings) {
-            // null restores the WebView's own mobile user agent.
-            userAgentString = if (enabled) desktopUserAgent(userAgentString) else null
-            useWideViewPort = true
-            loadWithOverviewMode = true
-        }
-        return true
-    }
-
-    private fun desktopUserAgent(mobile: String?): String {
-        val chrome = mobile?.let { Regex("Chrome/(\\d+)").find(it)?.groupValues?.get(1) } ?: "131"
-        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Chrome/$chrome.0.0.0 Safari/537.36"
-    }
-
-    /**
-     * While audio plays and the app is in the background, pages are told they are still visible so
-     * that sites do not pause their players on their own. Undone when the app comes back.
-     */
-    fun setMediaKeepAlive(active: Boolean) {
-        if (mediaKeepAlive == active) return
-        mediaKeepAlive = active
-        val script = if (active) KEEP_VISIBLE_JS else RESTORE_VISIBLE_JS
-        views.values.forEach { it.evaluateJavascript(script, null) }
-    }
+    fun get(tabId: Long, isPrivate: Boolean): WebView =
+        views[tabId] ?: create(tabId, isPrivate).also { views[tabId] = it }
 
     /** Destroys WebViews of tabs that no longer exist. */
     fun retain(tabIds: Set<Long>) {
@@ -96,7 +59,7 @@ class WebViewRegistry(
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun create(tabId: Long, isPrivate: Boolean, isDesktop: Boolean): WebView {
+    private fun create(tabId: Long, isPrivate: Boolean): WebView {
         val webView = WebView(context)
         if (isPrivate) bindPrivate(tabId, webView)
         webView.layoutParams = ViewGroup.LayoutParams(
@@ -125,9 +88,7 @@ class WebViewRegistry(
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
 
-        if (isDesktop) applyDesktopMode(tabId, webView, true)
-
-        webView.webViewClient = NexorithWebViewClient(tabId, events) { tabId in desktopTabIds }
+        webView.webViewClient = NexorithWebViewClient(tabId, events)
         webView.webChromeClient = NexorithChromeClient(tabId, events, onSitePermission)
 
         // Files the page asks to download are handed to the download manager. Private tabs send no
@@ -166,7 +127,6 @@ class WebViewRegistry(
 
     private fun destroy(tabId: Long, webView: WebView) {
         val isPrivate = privateTabIds.remove(tabId)
-        desktopTabIds.remove(tabId)
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.stopLoading()
         if (isPrivate) {
@@ -182,44 +142,9 @@ class WebViewRegistry(
     }
 }
 
-/** Makes the page lay out as on a desktop screen, whatever its viewport tag asks for. */
-private const val DESKTOP_VIEWPORT_JS = """
-(function () {
-  var meta = document.querySelector('meta[name=viewport]');
-  if (!meta) {
-    meta = document.createElement('meta');
-    meta.name = 'viewport';
-    (document.head || document.documentElement).appendChild(meta);
-  }
-  meta.setAttribute('content', 'width=1024, user-scalable=yes');
-})();
-"""
-
-private const val KEEP_VISIBLE_JS = """
-(function () {
-  if (window.__nxKeepVisible) return;
-  window.__nxKeepVisible = function (e) { e.stopImmediatePropagation(); };
-  try {
-    Object.defineProperty(document, 'hidden', { configurable: true, get: function () { return false; } });
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: function () { return 'visible'; } });
-  } catch (e) {}
-  document.addEventListener('visibilitychange', window.__nxKeepVisible, true);
-})();
-"""
-
-private const val RESTORE_VISIBLE_JS = """
-(function () {
-  if (!window.__nxKeepVisible) return;
-  document.removeEventListener('visibilitychange', window.__nxKeepVisible, true);
-  try { delete document.hidden; delete document.visibilityState; } catch (e) {}
-  window.__nxKeepVisible = null;
-})();
-"""
-
 private class NexorithWebViewClient(
     private val tabId: Long,
     private val events: WebEvents,
-    private val isDesktop: () -> Boolean,
 ) : WebViewClient() {
 
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -246,12 +171,7 @@ private class NexorithWebViewClient(
         if (url != null) events.onPageStarted(tabId, url)
     }
 
-    override fun onPageCommitVisible(view: WebView?, url: String?) {
-        if (isDesktop()) view?.evaluateJavascript(DESKTOP_VIEWPORT_JS, null)
-    }
-
     override fun onPageFinished(view: WebView?, url: String?) {
-        if (isDesktop()) view?.evaluateJavascript(DESKTOP_VIEWPORT_JS, null)
         if (url != null) events.onPageFinished(tabId, url, view?.title.orEmpty())
         if (view != null) events.onNavState(tabId, url, view.canGoBack(), view.canGoForward())
     }
